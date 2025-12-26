@@ -70,7 +70,7 @@ export function CreateSpacePage({ onNavigate, user }: CreateSpacePageProps) {
         <div className="text-center mb-8">
           <h1 className="text-3xl mb-2 text-gray-900">Create a New Space!</h1>
           <p className="text-gray-600">
-            Set up a shared space for your community
+            Create a shared space for your community
           </p>
         </div>
 
