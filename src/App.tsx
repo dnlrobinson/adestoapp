@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import { WelcomePage } from './components/WelcomePage';
 import { OnboardingPage } from './components/OnboardingPage';
@@ -31,10 +32,10 @@ export interface Space {
 }
 
 export default function App() {
-  const [currentPage, setCurrentPage] = useState<Page>('welcome');
-  const [selectedSpaceId, setSelectedSpaceId] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     // Check active session on load
@@ -47,7 +48,10 @@ export default function App() {
           email: user.email,
           avatar: user.user_metadata.avatar_url
         });
-        setCurrentPage('explore');
+        // If on root or welcome, go to explore
+        if (location.pathname === '/' || location.pathname === '/welcome') {
+          navigate('/explore');
+        }
       }
       setLoading(false);
     });
@@ -63,12 +67,12 @@ export default function App() {
           avatar: session.user.user_metadata.avatar_url
         });
         // Only redirect to explore if we're on welcome page
-        if (currentPage === 'welcome') {
-          setCurrentPage('explore');
+        if (location.pathname === '/' || location.pathname === '/welcome') {
+          navigate('/explore');
         }
       } else {
         setUser(null);
-        setCurrentPage('welcome');
+        navigate('/');
       }
     });
 
@@ -76,9 +80,14 @@ export default function App() {
   }, []);
 
   const handleNavigate = (page: Page, spaceId?: string) => {
-    setCurrentPage(page);
-    if (spaceId) {
-      setSelectedSpaceId(spaceId);
+    if (page === 'space-detail' && spaceId) {
+      navigate(`/space/${spaceId}`);
+    } else if (page === 'create-space') {
+      navigate('/create');
+    } else if (page === 'welcome') {
+      navigate('/');
+    } else {
+      navigate(`/${page}`);
     }
   };
 
@@ -99,48 +108,38 @@ export default function App() {
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     setUser(null);
-    setCurrentPage('welcome');
+    navigate('/');
   };
 
   const handleCompleteOnboarding = (userData: User) => {
     setUser(userData);
-    setCurrentPage('explore');
+    navigate('/explore');
   };
+
+  if (loading) {
+    return <div className="min-h-screen bg-gray-50 flex items-center justify-center">Loading...</div>;
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {currentPage === 'welcome' && (
-        <WelcomePage onSignUp={handleSignUp} />
-      )}
-      {currentPage === 'onboarding' && (
-        <OnboardingPage onComplete={handleCompleteOnboarding} />
-      )}
-      {currentPage === 'explore' && (
-        <ExplorePage 
-          onNavigate={handleNavigate}
-          user={user}
-        />
-      )}
-      {currentPage === 'space-detail' && selectedSpaceId && (
-        <SpaceDetailPage 
-          spaceId={selectedSpaceId}
-          onNavigate={handleNavigate}
-          user={user}
-        />
-      )}
-      {currentPage === 'create-space' && (
-        <CreateSpacePage 
-          onNavigate={handleNavigate}
-          user={user}
-        />
-      )}
-      {currentPage === 'profile' && (
-        <ProfilePage 
-          onNavigate={handleNavigate}
-          user={user}
-          onSignOut={handleSignOut}
-        />
-      )}
+      <Routes>
+        <Route path="/" element={<WelcomePage onSignUp={handleSignUp} />} />
+        <Route path="/welcome" element={<Navigate to="/" replace />} />
+        <Route path="/onboarding" element={<OnboardingPage onComplete={handleCompleteOnboarding} />} />
+        <Route path="/explore" element={<ExplorePage onNavigate={handleNavigate} user={user} />} />
+        <Route path="/space/:spaceId" element={<SpaceDetailPageWrapper onNavigate={handleNavigate} user={user} />} />
+        <Route path="/create" element={<CreateSpacePage onNavigate={handleNavigate} user={user} />} />
+        <Route path="/profile" element={<ProfilePage onNavigate={handleNavigate} user={user} onSignOut={handleSignOut} />} />
+      </Routes>
     </div>
   );
+}
+
+// Wrapper to extract spaceId from params
+import { useParams } from 'react-router-dom';
+
+function SpaceDetailPageWrapper({ onNavigate, user }: { onNavigate: (page: Page, spaceId?: string) => void, user: User | null }) {
+  const { spaceId } = useParams();
+  if (!spaceId) return null;
+  return <SpaceDetailPage spaceId={spaceId} onNavigate={onNavigate} user={user} />;
 }
