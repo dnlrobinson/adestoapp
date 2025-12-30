@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
+import { Routes, Route, useNavigate, useLocation, Navigate, useParams } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import { WelcomePage } from './components/WelcomePage';
 import { OnboardingPage } from './components/OnboardingPage';
@@ -7,8 +7,9 @@ import { ExplorePage } from './components/ExplorePage';
 import { SpaceDetailPage } from './components/SpaceDetailPage';
 import { CreateSpacePage } from './components/CreateSpacePage';
 import { ProfilePage } from './components/ProfilePage';
+import { AdminToolsPage } from './components/AdminToolsPage';
 
-export type Page = 'welcome' | 'onboarding' | 'explore' | 'space-detail' | 'create-space' | 'profile';
+export type Page = 'welcome' | 'onboarding' | 'explore' | 'space-detail' | 'create-space' | 'profile' | 'admin';
 
 export interface User {
   fullName: string;
@@ -77,11 +78,13 @@ export default function App() {
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [navigate, location.pathname]);
 
   const handleNavigate = (page: Page, spaceId?: string) => {
     if (page === 'space-detail' && spaceId) {
       navigate(`/space/${spaceId}`);
+    } else if (page === 'admin' && spaceId) {
+      navigate(`/space/${spaceId}/admin`);
     } else if (page === 'create-space') {
       navigate('/create');
     } else if (page === 'welcome') {
@@ -128,6 +131,7 @@ export default function App() {
         <Route path="/onboarding" element={<OnboardingPage onComplete={handleCompleteOnboarding} />} />
         <Route path="/explore" element={<ExplorePage onNavigate={handleNavigate} user={user} />} />
         <Route path="/space/:spaceId" element={<SpaceDetailPageWrapper onNavigate={handleNavigate} user={user} />} />
+        <Route path="/space/:spaceId/admin" element={<AdminToolsPageWrapper onNavigate={handleNavigate} user={user} />} />
         <Route path="/create" element={<CreateSpacePage onNavigate={handleNavigate} user={user} />} />
         <Route path="/profile" element={<ProfilePage onNavigate={handleNavigate} user={user} onSignOut={handleSignOut} />} />
       </Routes>
@@ -142,4 +146,10 @@ function SpaceDetailPageWrapper({ onNavigate, user }: { onNavigate: (page: Page,
   const { spaceId } = useParams();
   if (!spaceId) return null;
   return <SpaceDetailPage spaceId={spaceId} onNavigate={onNavigate} user={user} />;
+}
+
+function AdminToolsPageWrapper({ onNavigate, user }: { onNavigate: (page: Page, spaceId?: string) => void, user: User | null }) {
+  const { spaceId } = useParams();
+  if (!spaceId) return null;
+  return <AdminToolsPage spaceId={spaceId} onNavigate={onNavigate} user={user} />;
 }

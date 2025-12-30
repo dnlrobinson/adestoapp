@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef, useLayoutEffect } from 'react';
-import { MapPin, ArrowLeft, MessageCircle, Calendar, Send, Loader2, ChevronRight, ChevronLeft, Users, Lock, Globe } from 'lucide-react';
+import { MapPin, ArrowLeft, MessageCircle, Calendar, Send, Loader2, ChevronRight, ChevronLeft, Users, Lock, Globe, Shield } from 'lucide-react';
 import { Page, User } from '../App';
 import { BottomNav } from './BottomNav';
 import { supabase } from '../lib/supabase';
 
 interface SpaceDetailPageProps {
   spaceId: string;
-  onNavigate: (page: Page) => void;
+  onNavigate: (page: Page, spaceId?: string) => void;
   user: User | null;
 }
 
@@ -55,6 +55,8 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
   const [spaceDescription, setSpaceDescription] = useState('');
   const [memberCount, setMemberCount] = useState(0);
   const [isPrivate, setIsPrivate] = useState(false);
+  const [creatorId, setCreatorId] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   
   const [weekDays, setWeekDays] = useState<WeekDay[]>([]);
   const [currentWeekStart, setCurrentWeekStart] = useState(new Date());
@@ -68,6 +70,12 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
   useEffect(() => {
     setWeekDays(getDaysOfWeek(currentWeekStart));
   }, [currentWeekStart]);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setCurrentUserId(user?.id || null);
+    });
+  }, []);
 
   // Auto-scroll to 8AM
   useLayoutEffect(() => {
@@ -136,6 +144,7 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
         setSpaceDescription(space.description || '');
         setMemberCount(space.members_count || 0);
         setIsPrivate(space.is_private || false);
+        setCreatorId(space.creator_id || null);
       }
 
       // 2. Get Signals (Heatmap)
@@ -300,6 +309,16 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
                 </p>
               )}
             </div>
+
+            {creatorId && currentUserId === creatorId && (
+              <button
+                onClick={() => onNavigate('admin', spaceId)}
+                className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-xl hover:bg-gray-800 transition-colors"
+              >
+                <Shield className="w-4 h-4" />
+                <span className="text-sm">Admin Tools</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
