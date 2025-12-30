@@ -1,5 +1,5 @@
 @import "tailwindcss";
-@config "../tailwind.config.js";
+@config "../tailwind.config.cjs";
 
 /* Optional: Make the whole app feel like an app */
 body {
