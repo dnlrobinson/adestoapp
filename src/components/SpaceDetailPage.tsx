@@ -314,7 +314,7 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
 
             {creatorId && currentUserId === creatorId && (
               <button
-                onClick={() => navigate(`/space/${spaceId}/admin`)}
+                onClick={() => onNavigate('admin', spaceId)}
                 className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-xl hover:bg-gray-800 transition-colors"
               >
                 <Shield className="w-4 h-4" />

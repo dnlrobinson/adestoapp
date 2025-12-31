@@ -78,7 +78,7 @@ export default function App() {
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [navigate, location.pathname]);
 
   const handleNavigate = (page: Page, spaceId?: string) => {
     if (page === 'space-detail' && spaceId) {
