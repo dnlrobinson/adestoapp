@@ -29,3 +29,4 @@ export default {
   },
   plugins: [], // <--- EMPTY FOR NOW (Prevents crash until you install plugins)
 }
+

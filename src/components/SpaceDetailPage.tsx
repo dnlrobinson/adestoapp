@@ -80,8 +80,6 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   
   const scrollRef = useRef<HTMLDivElement>(null);
-  const touchStart = useRef<number>(0);
-  const touchEnd = useRef<number>(0);
   const navigate = useNavigate();
 
   // Update weekDays when currentWeekStart changes
@@ -120,47 +118,21 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
     }
   }, [activeTab]);
 
-  // Swipe Handlers
-  const handleTouchStart = (e: React.TouchEvent) => {
-    touchStart.current = e.targetTouches[0].clientX;
-    touchEnd.current = e.targetTouches[0].clientX; // Initialize touchEnd
+  // Arrow Navigation Handlers
+  const handlePreviousWeek = () => {
+    const prev = new Date(currentWeekStart);
+    prev.setDate(prev.getDate() - 7);
+    setCurrentWeekStart(prev);
   };
 
-  const handleTouchMove = (e: React.TouchEvent) => {
-    touchEnd.current = e.targetTouches[0].clientX;
+  const handleNextWeek = () => {
+    const next = new Date(currentWeekStart);
+    next.setDate(next.getDate() + 7);
+    setCurrentWeekStart(next);
   };
 
-  const handleTouchEnd = () => {
-    if (!touchStart.current || !touchEnd.current) return;
-    const distance = touchStart.current - touchEnd.current;
-    const absDistance = Math.abs(distance);
-    
-    // Increased threshold from 50 to 100px for less sensitivity
-    // Also require minimum 20% of screen width for intentional swipe
-    const minSwipeDistance = 100;
-    const minSwipePercentage = window.innerWidth * 0.2;
-    const requiredDistance = Math.max(minSwipeDistance, minSwipePercentage);
-    
-    const isLeftSwipe = distance > requiredDistance;
-    const isRightSwipe = distance < -requiredDistance;
-
-    if (isLeftSwipe) {
-      // Next Week
-      const next = new Date(currentWeekStart);
-      next.setDate(next.getDate() + 7);
-      setCurrentWeekStart(next);
-    }
-
-    if (isRightSwipe) {
-      // Prev Week
-      const prev = new Date(currentWeekStart);
-      prev.setDate(prev.getDate() - 7);
-      setCurrentWeekStart(prev);
-    }
-    
-    // Reset
-    touchStart.current = 0;
-    touchEnd.current = 0;
+  const handleToday = () => {
+    setCurrentWeekStart(new Date());
   };
 
 
@@ -452,19 +424,35 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
 
         {/* --- SIGNAL TAB (HEATMAP) --- */}
         {activeTab === 'signal' && (
-          <div 
-            className="bg-white" 
-            ref={scrollRef}
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
-          >
+          <div className="bg-white" ref={scrollRef}>
+            {/* Today Button */}
+            <div className="flex justify-center py-2 border-b border-gray-100">
+              <button
+                onClick={handleToday}
+                className="px-4 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                Today
+              </button>
+            </div>
+            
             <div className="overflow-x-auto">
               <div className="inline-block min-w-full">
                 <table className="w-full border-collapse">
                   <thead>
                     <tr>
                       <th className="p-2 w-14 sticky left-0 bg-white z-10 border-r border-gray-100"></th>
+                      
+                      {/* Left Arrow Button */}
+                      <th className="p-2 w-12 border-b border-gray-100">
+                        <button
+                          onClick={handlePreviousWeek}
+                          className="w-full h-full flex items-center justify-center hover:bg-gray-50 rounded transition-colors"
+                          aria-label="Previous week"
+                        >
+                          <ChevronLeft className="w-5 h-5 text-gray-600" />
+                        </button>
+                      </th>
+                      
                       {/* Previous week's last day - faded */}
                       {(() => {
                         const { prevDay } = getAdjacentDays(currentWeekStart);
@@ -504,6 +492,17 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
                           </th>
                         );
                       })()}
+                      
+                      {/* Right Arrow Button */}
+                      <th className="p-2 w-12 border-b border-gray-100">
+                        <button
+                          onClick={handleNextWeek}
+                          className="w-full h-full flex items-center justify-center hover:bg-gray-50 rounded transition-colors"
+                          aria-label="Next week"
+                        >
+                          <ChevronRight className="w-5 h-5 text-gray-600" />
+                        </button>
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -513,6 +512,9 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
                         <td className="p-2 border-r border-gray-100 text-[10px] text-gray-400 font-medium text-center sticky left-0 bg-white z-10">
                           {hour}
                         </td>
+                        
+                        {/* Empty cell for left arrow column */}
+                        <td className="p-0.5 border-b border-r border-gray-50"></td>
                         
                         {/* Previous week's last day column - faded */}
                         {(() => {
@@ -569,6 +571,9 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
                             </td>
                           );
                         })()}
+                        
+                        {/* Empty cell for right arrow column */}
+                        <td className="p-0.5 border-b border-r border-gray-50"></td>
                       </tr>
                     ))}
                   </tbody>
