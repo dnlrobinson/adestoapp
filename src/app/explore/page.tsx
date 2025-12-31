@@ -1,24 +1,25 @@
-import React, { useState, useEffect } from 'react';
-import { Search, Plus, MapPin, Users, Star, Loader2 } from 'lucide-react';
-import { Page, User, Space } from '../App';
-import { BottomNav } from './BottomNav';
-import { supabase } from '../lib/supabase';
+"use client"
 
-interface ExplorePageProps {
-  onNavigate: (page: Page, spaceId?: string) => void;
-  user: User | null;
-}
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { Search, Plus, MapPin, Users, Loader2 } from 'lucide-react'
+import { BottomNav } from '@/components/BottomNav'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/components/AuthProvider'
+import { Space } from '@/lib/types'
 
-const CATEGORIES = ['All', 'Health & Fitness', 'Education', 'Community', 'Entertainment'];
+const CATEGORIES = ['All', 'Health & Fitness', 'Education', 'Community', 'Entertainment']
 
-export function ExplorePage({ onNavigate, user }: ExplorePageProps) {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('All');
-  const [spaces, setSpaces] = useState<Space[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [joinedSpaceIds, setJoinedSpaceIds] = useState<Set<string>>(new Set());
-  const [joiningSpaceId, setJoiningSpaceId] = useState<string | null>(null);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+export default function ExplorePage() {
+  const router = useRouter()
+  const { user } = useAuth()
+  const [searchQuery, setSearchQuery] = useState('')
+  const [selectedCategory, setSelectedCategory] = useState('All')
+  const [spaces, setSpaces] = useState<Space[]>([])
+  const [loading, setLoading] = useState(true)
+  const [joinedSpaceIds, setJoinedSpaceIds] = useState<Set<string>>(new Set())
+  const [joiningSpaceId, setJoiningSpaceId] = useState<string | null>(null)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
 
   const mapSpaceRow = (item: any): Space => ({
     id: item.id,
@@ -31,69 +32,62 @@ export function ExplorePage({ onNavigate, user }: ExplorePageProps) {
     creator: item.creator_id,
     isPrivate: item.is_private,
     color: item.color || 'from-gray-400 to-gray-600'
-  });
+  })
 
   useEffect(() => {
-    let isMounted = true;
+    let isMounted = true
 
     async function fetchSpaces() {
       try {
-        // Get current user ID once
-        const { data: { user: authUser } } = await supabase.auth.getUser();
+        const { data: { user: authUser } } = await supabase.auth.getUser()
         if (!authUser) {
-          setLoading(false);
-          return;
+          setLoading(false)
+          return
         }
-        if (isMounted) setCurrentUserId(authUser.id);
+        if (isMounted) setCurrentUserId(authUser.id)
 
-        // Run queries in parallel for better performance
         const [spacesResult, membersResult] = await Promise.all([
-          // Fetch only needed space fields
           supabase
             .from('spaces')
             .select('id, name, description, location, category, members_count, rating, creator_id, is_private, color'),
-          
-          // Fetch user's joined spaces
           supabase
             .from('space_members')
             .select('space_id')
             .eq('user_id', authUser.id)
-        ]);
+        ])
 
         if (spacesResult.error) {
-          console.error('Error fetching spaces:', spacesResult.error);
-          setLoading(false);
-          return;
+          console.error('Error fetching spaces:', spacesResult.error)
+          setLoading(false)
+          return
         }
 
-        // Process joined spaces
-        const joinedIds = new Set<string>();
+        const joinedIds = new Set<string>()
         if (membersResult.data) {
           membersResult.data.forEach(member => {
-            if (member.space_id) joinedIds.add(member.space_id);
-          });
+            if (member.space_id) joinedIds.add(member.space_id)
+          })
         }
-        if (isMounted) setJoinedSpaceIds(joinedIds);
+        if (isMounted) setJoinedSpaceIds(joinedIds)
 
-        // Process spaces data
         if (spacesResult.data) {
-          const mappedSpaces: Space[] = spacesResult.data.map(mapSpaceRow);
-          if (isMounted) setSpaces(mappedSpaces);
+          const mappedSpaces: Space[] = spacesResult.data.map(mapSpaceRow)
+          if (isMounted) setSpaces(mappedSpaces)
         }
       } catch (err) {
-        console.error('Unexpected error:', err);
+        console.error('Unexpected error:', err)
       } finally {
-        if (isMounted) setLoading(false);
+        if (isMounted) setLoading(false)
       }
     }
 
-    fetchSpaces();
+    fetchSpaces()
     return () => {
-      isMounted = false;
-    };
-  }, []);
+      isMounted = false
+    }
+  }, [])
 
-  // Realtime updates for spaces list (new/updated/deleted)
+  // Realtime updates for spaces list
   useEffect(() => {
     const channel = supabase.channel('explore-spaces')
       .on(
@@ -102,28 +96,28 @@ export function ExplorePage({ onNavigate, user }: ExplorePageProps) {
         (payload) => {
           setSpaces(prev => {
             if (payload.eventType === 'INSERT') {
-              return [...prev, mapSpaceRow(payload.new)];
+              return [...prev, mapSpaceRow(payload.new)]
             }
             if (payload.eventType === 'UPDATE') {
-              return prev.map(space => space.id === payload.new.id ? mapSpaceRow(payload.new) : space);
+              return prev.map(space => space.id === payload.new.id ? mapSpaceRow(payload.new) : space)
             }
             if (payload.eventType === 'DELETE') {
-              return prev.filter(space => space.id !== payload.old.id);
+              return prev.filter(space => space.id !== payload.old.id)
             }
-            return prev;
-          });
+            return prev
+          })
         }
       )
-      .subscribe();
+      .subscribe()
 
     return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
+      supabase.removeChannel(channel)
+    }
+  }, [])
 
   // Realtime updates for current user's memberships
   useEffect(() => {
-    if (!currentUserId) return;
+    if (!currentUserId) return
 
     const channel = supabase.channel(`explore-members-${currentUserId}`)
       .on(
@@ -131,89 +125,85 @@ export function ExplorePage({ onNavigate, user }: ExplorePageProps) {
         { event: '*', schema: 'public', table: 'space_members', filter: `user_id=eq.${currentUserId}` },
         (payload) => {
           if (payload.eventType === 'INSERT') {
-            setJoinedSpaceIds(prev => new Set(prev).add(payload.new.space_id));
+            setJoinedSpaceIds(prev => new Set(prev).add(payload.new.space_id))
           }
           if (payload.eventType === 'DELETE') {
             setJoinedSpaceIds(prev => {
-              const next = new Set(prev);
-              next.delete(payload.old.space_id);
-              return next;
-            });
+              const next = new Set(prev)
+              next.delete(payload.old.space_id)
+              return next
+            })
           }
         }
       )
-      .subscribe();
+      .subscribe()
 
     return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [currentUserId]);
+      supabase.removeChannel(channel)
+    }
+  }, [currentUserId])
 
   const handleJoinSpace = async (spaceId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+    e.stopPropagation()
     
     if (!user || !currentUserId) {
-      alert('Please log in to join a space');
-      return;
+      alert('Please log in to join a space')
+      return
     }
 
-    setJoiningSpaceId(spaceId);
+    setJoiningSpaceId(spaceId)
     
     try {
-      const isJoined = joinedSpaceIds.has(spaceId);
+      const isJoined = joinedSpaceIds.has(spaceId)
 
       if (isJoined) {
-        // Leave the space
         const { error: deleteError } = await supabase
           .from('space_members')
           .delete()
           .eq('space_id', spaceId)
-          .eq('user_id', currentUserId);
+          .eq('user_id', currentUserId)
 
-        if (deleteError) throw deleteError;
+        if (deleteError) throw deleteError
 
-        // Update local state
         setJoinedSpaceIds(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(spaceId);
-          return newSet;
-        });
+          const newSet = new Set(prev)
+          newSet.delete(spaceId)
+          return newSet
+        })
 
         setSpaces(prev => prev.map(s => 
           s.id === spaceId ? { ...s, members: Math.max(0, (s.members || 0) - 1) } : s
-        ));
+        ))
       } else {
-        // Join the space
         const { error: insertError } = await supabase
           .from('space_members')
           .insert({
             space_id: spaceId,
             user_id: currentUserId,
             role: 'member'
-          });
+          })
 
-        if (insertError) throw insertError;
+        if (insertError) throw insertError
 
-        // Update local state
-        setJoinedSpaceIds(prev => new Set(prev).add(spaceId));
+        setJoinedSpaceIds(prev => new Set(prev).add(spaceId))
         setSpaces(prev => prev.map(s => 
           s.id === spaceId ? { ...s, members: (s.members || 0) + 1 } : s
-        ));
+        ))
       }
     } catch (error: any) {
-      console.error('Error joining/leaving space:', error);
-      alert('Error: ' + (error.message || 'Failed to join/leave space'));
+      console.error('Error joining/leaving space:', error)
+      alert('Error: ' + (error.message || 'Failed to join/leave space'))
     } finally {
-      setJoiningSpaceId(null);
+      setJoiningSpaceId(null)
     }
-  };
+  }
 
   const filteredSpaces = spaces.filter(space => {
     const matchesSearch = space.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         space.location.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = selectedCategory === 'All' || space.category === selectedCategory;
-    return matchesSearch && matchesCategory;
-  });
+                         space.location.toLowerCase().includes(searchQuery.toLowerCase())
+    const matchesCategory = selectedCategory === 'All' || space.category === selectedCategory
+    return matchesSearch && matchesCategory
+  })
 
   if (loading) {
     return (
@@ -223,7 +213,7 @@ export function ExplorePage({ onNavigate, user }: ExplorePageProps) {
           <p className="text-gray-500">Loading Adesto...</p>
         </div>
       </div>
-    );
+    )
   }
 
   return (
@@ -245,7 +235,7 @@ export function ExplorePage({ onNavigate, user }: ExplorePageProps) {
             </div>
 
             <button
-              onClick={() => onNavigate('create-space')}
+              onClick={() => router.push('/create')}
               className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-black text-white rounded-xl hover:bg-gray-800 transition-colors"
             >
               <Plus className="w-5 h-5" />
@@ -276,7 +266,7 @@ export function ExplorePage({ onNavigate, user }: ExplorePageProps) {
           {filteredSpaces.map(space => (
             <div
               key={space.id}
-              onClick={() => onNavigate('space-detail', space.id)}
+              onClick={() => router.push(`/space/${space.id}`)}
               className="bg-white rounded-2xl shadow-sm hover:shadow-md transition-all cursor-pointer overflow-hidden border border-gray-100"
             >
               <div className={`h-32 bg-gradient-to-br ${space.color}`} />
@@ -338,7 +328,8 @@ export function ExplorePage({ onNavigate, user }: ExplorePageProps) {
         )}
       </div>
 
-      <BottomNav currentPage="explore" onNavigate={onNavigate} />
+      <BottomNav />
     </div>
-  );
+  )
 }
+

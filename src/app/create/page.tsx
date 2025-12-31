@@ -1,39 +1,33 @@
-import React, { useState } from 'react';
-import { ArrowLeft, Globe, Lock, MapPin, Tag, FileText, Image as ImageIcon, Loader2 } from 'lucide-react';
-import { Page, User } from '../App';
-import { supabase } from '../lib/supabase'; // Import the client
+"use client"
 
-interface CreateSpacePageProps {
-  onNavigate: (page: Page) => void;
-  user: User | null;
-}
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { ArrowLeft, Globe, Lock, MapPin, Tag, FileText, Loader2 } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
 
-export function CreateSpacePage({ onNavigate, user }: CreateSpacePageProps) {
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [location, setLocation] = useState('');
-  const [category, setCategory] = useState('Community');
-  const [isPrivate, setIsPrivate] = useState(false);
-  
-  // New state for loading
-  const [isSubmitting, setIsSubmitting] = useState(false);
+export default function CreateSpacePage() {
+  const router = useRouter()
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [location, setLocation] = useState('')
+  const [category, setCategory] = useState('Community')
+  const [isPrivate, setIsPrivate] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name || !description || !location) return;
+    e.preventDefault()
+    if (!name || !description || !location) return
 
-    setIsSubmitting(true);
+    setIsSubmitting(true)
 
     try {
-      // Get the current user's ID
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
       if (authError || !user) {
-        alert('You must be logged in to create a space');
-        setIsSubmitting(false);
-        return;
+        alert('You must be logged in to create a space')
+        setIsSubmitting(false)
+        return
       }
 
-      // 1. Send data to Supabase
       const { data: newSpace, error } = await supabase
         .from('spaces')
         .insert({
@@ -43,46 +37,43 @@ export function CreateSpacePage({ onNavigate, user }: CreateSpacePageProps) {
           category,
           is_private: isPrivate,
           creator_id: user.id,
-          members_count: 1, // Creator is the first member
+          members_count: 1,
         })
         .select()
-        .single();
+        .single()
 
-      if (error) throw error;
-      if (!newSpace) throw new Error('Failed to create space');
+      if (error) throw error
+      if (!newSpace) throw new Error('Failed to create space')
 
-      // 2. Add creator to space_members
       const { error: memberError } = await supabase
         .from('space_members')
         .insert({
           space_id: newSpace.id,
           user_id: user.id,
           role: 'creator'
-        });
+        })
 
       if (memberError) {
-        console.error('Error adding creator to space_members:', memberError);
-        // Don't throw - space is created, just member record failed
+        console.error('Error adding creator to space_members:', memberError)
       }
 
-      // 3. If successful, go back to Explore to see the new space!
-      onNavigate('explore');
+      router.push('/explore')
       
     } catch (error: any) {
-      alert('Error creating space: ' + error.message);
+      alert('Error creating space: ' + error.message)
     } finally {
-      setIsSubmitting(false);
+      setIsSubmitting(false)
     }
-  };
+  }
 
-  const isValid = name.trim() && description.trim() && location.trim();
+  const isValid = name.trim() && description.trim() && location.trim()
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="bg-white border-b border-gray-100">
         <div className="max-w-2xl mx-auto px-4 py-4">
           <button
-            onClick={() => onNavigate('explore')}
+            onClick={() => router.push('/explore')}
             className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
           >
             <ArrowLeft className="w-5 h-5" />
@@ -225,7 +216,7 @@ export function CreateSpacePage({ onNavigate, user }: CreateSpacePageProps) {
           <div className="flex gap-3 pt-4">
             <button
               type="button"
-              onClick={() => onNavigate('explore')}
+              onClick={() => router.push('/explore')}
               className="flex-1 px-6 py-4 bg-white border-2 border-gray-200 text-gray-700 rounded-xl hover:border-gray-300 transition-colors"
             >
               Cancel
@@ -242,5 +233,6 @@ export function CreateSpacePage({ onNavigate, user }: CreateSpacePageProps) {
         </form>
       </div>
     </div>
-  );
+  )
 }
+

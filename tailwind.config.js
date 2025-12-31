@@ -1,24 +1,23 @@
 /** @type {import('tailwindcss').Config} */
-export default {
+module.exports = {
   darkMode: ['class'],
   content: [
-    "./index.html",               // <--- CRITICAL: Needed for Vite
-    "./src/**/*.{js,ts,jsx,tsx}", // <--- CRITICAL: Covers all your components
+    "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
+    "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
     extend: {
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
       },
-      // I kept your animations because they are cool!
       keyframes: {
         'accordion-down': {
-          from: { height: 0 },
+          from: { height: '0' },
           to: { height: 'var(--radix-accordion-content-height)' },
         },
         'accordion-up': {
           from: { height: 'var(--radix-accordion-content-height)' },
-          to: { height: 0 },
+          to: { height: '0' },
         },
       },
       animation: {
@@ -27,6 +26,5 @@ export default {
       },
     },
   },
-  plugins: [], // <--- EMPTY FOR NOW (Prevents crash until you install plugins)
+  plugins: [],
 }
-

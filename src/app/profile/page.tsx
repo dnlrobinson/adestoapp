@@ -1,135 +1,129 @@
-import { MapPin, Edit, Mail, Calendar, Users, Loader2 } from 'lucide-react';
-import { Page, User } from '../App';
-import { BottomNav } from './BottomNav';
-import React, { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
-import { Avatar } from './Avatar';
+"use client"
 
-interface ProfilePageProps {
-  onNavigate: (page: Page, spaceId?: string) => void;
-  user: User | null;
-  onSignOut?: () => void;
-}
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { MapPin, Edit, Mail, Calendar, Users, Loader2 } from 'lucide-react'
+import { BottomNav } from '@/components/BottomNav'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/components/AuthProvider'
+import { Avatar } from '@/components/Avatar'
 
 interface UserSpace {
-  id: string;
-  name: string;
-  location: string;
-  members: number;
-  color: string;
-  role: 'Creator' | 'Member';
+  id: string
+  name: string
+  location: string
+  members: number
+  color: string
+  role: 'Creator' | 'Member'
 }
 
-export function ProfilePage({ onNavigate, user, onSignOut }: ProfilePageProps) {
-  const [userSpaces, setUserSpaces] = useState<UserSpace[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [profileLoading, setProfileLoading] = useState(true);
-  const [profileData, setProfileData] = useState<any>(null);
+export default function ProfilePage() {
+  const router = useRouter()
+  const { user, signOut } = useAuth()
+  const [userSpaces, setUserSpaces] = useState<UserSpace[]>([])
+  const [loading, setLoading] = useState(true)
+  const [profileLoading, setProfileLoading] = useState(true)
+  const [profileData, setProfileData] = useState<any>(null)
 
   useEffect(() => {
     async function fetchProfile() {
       try {
-        const { data: { user: authUser } } = await supabase.auth.getUser();
+        const { data: { user: authUser } } = await supabase.auth.getUser()
         if (!authUser) {
-          setProfileLoading(false);
-          return;
+          setProfileLoading(false)
+          return
         }
 
         const { data: profileData, error } = await supabase
           .from('profiles')
           .select('full_name, location, bio, avatar_url, created_at')
           .eq('id', authUser.id)
-          .single();
+          .single()
 
-        if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
-          console.error('Error fetching profile:', error);
+        if (error && error.code !== 'PGRST116') {
+          console.error('Error fetching profile:', error)
         }
 
         if (profileData) {
-          setProfileData(profileData);
+          setProfileData(profileData)
         }
       } catch (err) {
-        console.error('Error:', err);
+        console.error('Error:', err)
       } finally {
-        setProfileLoading(false);
+        setProfileLoading(false)
       }
     }
 
-    fetchProfile();
-  }, [user]);
+    fetchProfile()
+  }, [user])
 
   useEffect(() => {
     async function fetchUserSpaces() {
       try {
-        const { data: { user: authUser } } = await supabase.auth.getUser();
+        const { data: { user: authUser } } = await supabase.auth.getUser()
         if (!authUser) {
-          setLoading(false);
-          return;
+          setLoading(false)
+          return
         }
 
-        // Fetch spaces where user is a member
         const { data: membersData, error: membersError } = await supabase
           .from('space_members')
           .select('space_id, role')
-          .eq('user_id', authUser.id);
+          .eq('user_id', authUser.id)
 
         if (membersError) {
-          console.error('Error fetching user spaces:', membersError);
-          setLoading(false);
-          return;
+          console.error('Error fetching user spaces:', membersError)
+          setLoading(false)
+          return
         }
 
         if (!membersData || membersData.length === 0) {
-          setUserSpaces([]);
-          setLoading(false);
-          return;
+          setUserSpaces([])
+          setLoading(false)
+          return
         }
 
-        // Fetch full space details - only needed fields
-        const spaceIds = membersData.map(m => m.space_id).filter(Boolean);
+        const spaceIds = membersData.map(m => m.space_id).filter(Boolean)
         const { data: spacesData, error: spacesError } = await supabase
           .from('spaces')
           .select('id, name, location, creator_id')
-          .in('id', spaceIds);
+          .in('id', spaceIds)
 
         if (spacesError) {
-          console.error('Error fetching spaces:', spacesError);
-          setLoading(false);
-          return;
+          console.error('Error fetching spaces:', spacesError)
+          setLoading(false)
+          return
         }
 
-        // Map spaces with role information
         const mappedSpaces: UserSpace[] = (spacesData || []).map(space => {
-          const member = membersData.find(m => m.space_id === space.id);
-          const isCreator = space.creator_id === authUser.id;
+          const isCreator = space.creator_id === authUser.id
           
           return {
             id: space.id,
             name: space.name,
             location: space.location || 'Unknown',
-            members: space.members_count || 0,
-            color: space.color || 'from-gray-400 to-gray-600',
+            members: 0,
+            color: 'from-gray-400 to-gray-600',
             role: isCreator ? 'Creator' : 'Member'
-          };
-        });
+          }
+        })
 
-        // Sort: creators first, then by name
         mappedSpaces.sort((a, b) => {
-          if (a.role === 'Creator' && b.role !== 'Creator') return -1;
-          if (a.role !== 'Creator' && b.role === 'Creator') return 1;
-          return a.name.localeCompare(b.name);
-        });
+          if (a.role === 'Creator' && b.role !== 'Creator') return -1
+          if (a.role !== 'Creator' && b.role === 'Creator') return 1
+          return a.name.localeCompare(b.name)
+        })
 
-        setUserSpaces(mappedSpaces);
+        setUserSpaces(mappedSpaces)
       } catch (err) {
-        console.error('Unexpected error:', err);
+        console.error('Unexpected error:', err)
       } finally {
-        setLoading(false);
+        setLoading(false)
       }
     }
 
-    fetchUserSpaces();
-  }, []);
+    fetchUserSpaces()
+  }, [])
 
   const displayUser = profileData ? {
     fullName: profileData.full_name || user?.fullName || 'User',
@@ -142,11 +136,11 @@ export function ProfilePage({ onNavigate, user, onSignOut }: ProfilePageProps) {
     location: '',
     bio: '',
     email: ''
-  });
+  })
 
   const joinedDate = profileData?.created_at 
     ? new Date(profileData.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
-    : new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+    : new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
@@ -171,7 +165,7 @@ export function ProfilePage({ onNavigate, user, onSignOut }: ProfilePageProps) {
                     <div className="flex items-start justify-between mb-2">
                       <h1 className="text-2xl text-gray-900 truncate">{displayUser.fullName}</h1>
                       <button 
-                        onClick={() => onNavigate('edit-profile')}
+                        onClick={() => router.push('/profile/edit')}
                         className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors"
                       >
                         <Edit className="w-4 h-4" />
@@ -222,7 +216,7 @@ export function ProfilePage({ onNavigate, user, onSignOut }: ProfilePageProps) {
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl text-gray-900">My Spaces</h2>
             <button
-              onClick={() => onNavigate('create-space')}
+              onClick={() => router.push('/create')}
               className="px-4 py-2 bg-black text-white rounded-xl hover:bg-gray-800 transition-colors text-sm"
             >
               Create New
@@ -239,7 +233,7 @@ export function ProfilePage({ onNavigate, user, onSignOut }: ProfilePageProps) {
               <h3 className="text-lg font-medium text-gray-900 mb-1">No spaces yet</h3>
               <p className="text-gray-500 text-sm mb-4">Join spaces from the explore page to see them here</p>
               <button
-                onClick={() => onNavigate('explore')}
+                onClick={() => router.push('/explore')}
                 className="px-4 py-2 bg-black text-white rounded-xl hover:bg-gray-800 transition-colors text-sm"
               >
                 Explore Spaces
@@ -250,7 +244,7 @@ export function ProfilePage({ onNavigate, user, onSignOut }: ProfilePageProps) {
               {userSpaces.map(space => (
                 <div
                   key={space.id}
-                  onClick={() => onNavigate('space-detail', space.id)}
+                  onClick={() => router.push(`/space/${space.id}`)}
                   className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-all cursor-pointer"
                 >
                   <div className="flex items-center gap-4 p-4">
@@ -295,7 +289,7 @@ export function ProfilePage({ onNavigate, user, onSignOut }: ProfilePageProps) {
               Help & Support
             </button>
             <button 
-              onClick={onSignOut}
+              onClick={signOut}
               className="w-full text-left px-4 py-3 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 transition-colors"
             >
               Log Out
@@ -304,7 +298,8 @@ export function ProfilePage({ onNavigate, user, onSignOut }: ProfilePageProps) {
         </div>
       </div>
 
-      <BottomNav currentPage="profile" onNavigate={onNavigate} />
+      <BottomNav />
     </div>
-  );
+  )
 }
+

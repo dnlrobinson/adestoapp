@@ -1,40 +1,39 @@
-import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Save, Loader2, Upload, X } from 'lucide-react';
-import { Page, User } from '../App';
-import { supabase } from '../lib/supabase';
-import { Avatar } from './Avatar';
+"use client"
 
-interface EditProfilePageProps {
-  onNavigate: (page: Page, spaceId?: string) => void;
-  user: User | null;
-  onProfileUpdated?: () => void;
-}
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { ArrowLeft, Save, Loader2, Upload } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/components/AuthProvider'
+import { Avatar } from '@/components/Avatar'
 
-export function EditProfilePage({ onNavigate, user, onProfileUpdated }: EditProfilePageProps) {
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+export default function EditProfilePage() {
+  const router = useRouter()
+  const { user, refreshUser } = useAuth()
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
   const [profile, setProfile] = useState({
     fullName: '',
     bio: '',
     location: '',
     avatar: ''
-  });
-  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  })
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
 
   useEffect(() => {
     async function fetchProfile() {
       try {
-        const { data: { user: authUser } } = await supabase.auth.getUser();
+        const { data: { user: authUser } } = await supabase.auth.getUser()
         if (!authUser) {
-          setLoading(false);
-          return;
+          setLoading(false)
+          return
         }
 
         const { data: profileData } = await supabase
           .from('profiles')
           .select('full_name, location, bio, avatar_url, email')
           .eq('id', authUser.id)
-          .single();
+          .single()
 
         if (profileData) {
           setProfile({
@@ -42,100 +41,95 @@ export function EditProfilePage({ onNavigate, user, onProfileUpdated }: EditProf
             bio: profileData.bio || '',
             location: profileData.location || '',
             avatar: profileData.avatar_url || user?.avatar || ''
-          });
+          })
         } else if (user) {
           setProfile({
             fullName: user.fullName,
             bio: user.bio,
             location: user.location,
             avatar: user.avatar || ''
-          });
+          })
         }
       } catch (err) {
-        console.error('Error fetching profile:', err);
+        console.error('Error fetching profile:', err)
       } finally {
-        setLoading(false);
+        setLoading(false)
       }
     }
 
-    fetchProfile();
-  }, [user]);
+    fetchProfile()
+  }, [user])
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const file = e.target.files?.[0]
+    if (!file) return
 
-    // Validate file type
     if (!file.type.startsWith('image/')) {
-      alert('Please select an image file');
-      return;
+      alert('Please select an image file')
+      return
     }
 
-    // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
-      alert('Image size must be less than 5MB');
-      return;
+      alert('Image size must be less than 5MB')
+      return
     }
 
-    setUploadingAvatar(true);
+    setUploadingAvatar(true)
     try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
+      const { data: { user: authUser } } = await supabase.auth.getUser()
       if (!authUser) {
-        alert('You must be logged in to upload an avatar');
-        setUploadingAvatar(false);
-        return;
+        alert('You must be logged in to upload an avatar')
+        setUploadingAvatar(false)
+        return
       }
 
-      // Try to upload to Supabase Storage
       try {
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${authUser.id}-${Date.now()}.${fileExt}`;
-        const filePath = `avatars/${fileName}`;
+        const fileExt = file.name.split('.').pop()
+        const fileName = `${authUser.id}-${Date.now()}.${fileExt}`
+        const filePath = `avatars/${fileName}`
 
         const { error: uploadError } = await supabase.storage
           .from('avatars')
           .upload(filePath, file, {
             cacheControl: '3600',
             upsert: true
-          });
+          })
 
-        if (uploadError) throw uploadError;
+        if (uploadError) throw uploadError
 
-        // Get public URL
         const { data: { publicUrl } } = supabase.storage
           .from('avatars')
-          .getPublicUrl(filePath);
+          .getPublicUrl(filePath)
 
-        setProfile({ ...profile, avatar: publicUrl });
+        setProfile({ ...profile, avatar: publicUrl })
       } catch (storageError: any) {
-        // If storage bucket doesn't exist, allow user to paste URL instead
         if (storageError.message?.includes('Bucket not found') || storageError.message?.includes('not found')) {
-          alert('Avatar storage not set up. You can paste an image URL in the avatar URL field instead, or set up Supabase Storage bucket "avatars".');
+          alert('Avatar storage not set up. You can paste an image URL in the avatar URL field instead.')
         } else {
-          throw storageError;
+          throw storageError
         }
       }
     } catch (error: any) {
-      console.error('Error uploading avatar:', error);
-      alert('Error uploading avatar: ' + error.message);
+      console.error('Error uploading avatar:', error)
+      alert('Error uploading avatar: ' + error.message)
     } finally {
-      setUploadingAvatar(false);
+      setUploadingAvatar(false)
     }
-  };
+  }
 
   const handleSave = async () => {
     if (!profile.fullName.trim()) {
-      alert('Please enter your name');
-      return;
+      alert('Please enter your name')
+      return
     }
 
-    setSaving(true);
+    setSaving(true)
     try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
+      const { data: { user: authUser } } = await supabase.auth.getUser()
       if (!authUser) {
-        alert('You must be logged in to update your profile');
-        setSaving(false);
-        return;
+        alert('You must be logged in to update your profile')
+        setSaving(false)
+        return
       }
 
       const { error } = await supabase
@@ -148,31 +142,29 @@ export function EditProfilePage({ onNavigate, user, onProfileUpdated }: EditProf
           avatar_url: profile.avatar
         }, {
           onConflict: 'id'
-        });
+        })
 
-      if (error) throw error;
+      if (error) throw error
 
-      // Call callback to refresh profile in parent
-      if (onProfileUpdated) {
-        onProfileUpdated();
+      if (refreshUser) {
+        await refreshUser()
       }
 
-      // Navigate back to profile
-      onNavigate('profile');
+      router.push('/profile')
     } catch (error: any) {
-      console.error('Error saving profile:', error);
-      alert('Error saving profile: ' + error.message);
+      console.error('Error saving profile:', error)
+      alert('Error saving profile: ' + error.message)
     } finally {
-      setSaving(false);
+      setSaving(false)
     }
-  };
+  }
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
       </div>
-    );
+    )
   }
 
   return (
@@ -181,7 +173,7 @@ export function EditProfilePage({ onNavigate, user, onProfileUpdated }: EditProf
         <div className="max-w-2xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <button 
-              onClick={() => onNavigate('profile')}
+              onClick={() => router.push('/profile')}
               className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
             >
               <ArrowLeft className="w-5 h-5" />
@@ -211,7 +203,6 @@ export function EditProfilePage({ onNavigate, user, onProfileUpdated }: EditProf
 
       <div className="max-w-2xl mx-auto px-4 py-6">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-6">
-          {/* Avatar Section */}
           <div className="flex flex-col items-center">
             <Avatar 
               src={profile.avatar} 
@@ -261,7 +252,6 @@ export function EditProfilePage({ onNavigate, user, onProfileUpdated }: EditProf
             )}
           </div>
 
-          {/* Full Name */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Full Name *
@@ -276,7 +266,6 @@ export function EditProfilePage({ onNavigate, user, onProfileUpdated }: EditProf
             />
           </div>
 
-          {/* Location */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Location
@@ -290,7 +279,6 @@ export function EditProfilePage({ onNavigate, user, onProfileUpdated }: EditProf
             />
           </div>
 
-          {/* Bio */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               About
@@ -307,7 +295,6 @@ export function EditProfilePage({ onNavigate, user, onProfileUpdated }: EditProf
             </p>
           </div>
 
-          {/* Email (read-only) */}
           {user?.email && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -327,6 +314,6 @@ export function EditProfilePage({ onNavigate, user, onProfileUpdated }: EditProf
         </div>
       </div>
     </div>
-  );
+  )
 }
 
