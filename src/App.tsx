@@ -139,9 +139,6 @@ export default function App() {
   );
 }
 
-// Wrapper to extract spaceId from params
-import { useParams } from 'react-router-dom';
-
 function SpaceDetailPageWrapper({ onNavigate, user }: { onNavigate: (page: Page, spaceId?: string) => void, user: User | null }) {
   const { spaceId } = useParams();
   if (!spaceId) return null;

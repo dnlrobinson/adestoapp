@@ -76,7 +76,7 @@ export function ExplorePage({ onNavigate, user }: ExplorePageProps) {
     <div className="min-h-screen bg-gray-50 pb-20">
       <div className="bg-white border-b border-gray-100 sticky top-0 z-10">
         <div className="max-w-2xl mx-auto px-4 py-6">
-          <h1 className="text-3xl mb-6 text-center text-gray-900">Welcome to Spaces</h1>
+          <h1 className="text-3xl mb-6 text-center text-gray-900">Adesto</h1>
           
           <div className="space-y-4">
             <div className="relative">

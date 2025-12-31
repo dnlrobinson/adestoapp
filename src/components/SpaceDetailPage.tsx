@@ -3,6 +3,7 @@ import { MapPin, ArrowLeft, MessageCircle, Calendar, Send, Loader2, ChevronRight
 import { Page, User } from '../App';
 import { BottomNav } from './BottomNav';
 import { supabase } from '../lib/supabase';
+import { useNavigate } from 'react-router-dom';
 
 interface SpaceDetailPageProps {
   spaceId: string;
@@ -65,6 +66,7 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
   const scrollRef = useRef<HTMLDivElement>(null);
   const touchStart = useRef<number>(0);
   const touchEnd = useRef<number>(0);
+  const navigate = useNavigate();
 
   // Update weekDays when currentWeekStart changes
   useEffect(() => {
