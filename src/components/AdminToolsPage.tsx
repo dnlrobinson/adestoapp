@@ -35,7 +35,11 @@ export function AdminToolsPage({ spaceId, onNavigate, user }: AdminToolsPageProp
     async function load() {
       setLoading(true);
       // 1) Space info
-      const { data: space } = await supabase.from('spaces').select('*').eq('id', spaceId).single();
+      const { data: space } = await supabase
+        .from('spaces')
+        .select('name, creator_id')
+        .eq('id', spaceId)
+        .single();
       if (space) {
         setSpaceName(space.name);
         setCreatorId(space.creator_id);

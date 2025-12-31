@@ -29,33 +29,38 @@ export function ExplorePage({ onNavigate, user }: ExplorePageProps) {
           return;
         }
 
-        // Fetch all spaces
-        const { data: spacesData, error: spacesError } = await supabase
-          .from('spaces')
-          .select('*');
+        // Run queries in parallel for better performance
+        const [spacesResult, membersResult] = await Promise.all([
+          // Fetch only needed space fields
+          supabase
+            .from('spaces')
+            .select('id, name, description, location, category, members_count, rating, creator_id, is_private, color'),
+          
+          // Fetch user's joined spaces
+          supabase
+            .from('space_members')
+            .select('space_id')
+            .eq('user_id', authUser.id)
+        ]);
 
-        if (spacesError) {
-          console.error('Error fetching spaces:', spacesError);
+        if (spacesResult.error) {
+          console.error('Error fetching spaces:', spacesResult.error);
           setLoading(false);
           return;
         }
 
-        // Fetch user's joined spaces
-        const { data: membersData } = await supabase
-          .from('space_members')
-          .select('space_id')
-          .eq('user_id', authUser.id);
-
+        // Process joined spaces
         const joinedIds = new Set<string>();
-        if (membersData) {
-          membersData.forEach(member => {
+        if (membersResult.data) {
+          membersResult.data.forEach(member => {
             if (member.space_id) joinedIds.add(member.space_id);
           });
         }
         setJoinedSpaceIds(joinedIds);
 
-        if (spacesData) {
-          const mappedSpaces: Space[] = spacesData.map(item => ({
+        // Process spaces data
+        if (spacesResult.data) {
+          const mappedSpaces: Space[] = spacesResult.data.map(item => ({
             id: item.id,
             name: item.name,
             description: item.description || '',

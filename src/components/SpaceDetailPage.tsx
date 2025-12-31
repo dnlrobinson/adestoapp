@@ -174,9 +174,43 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
   // Fetch Data on Load and when week changes
   useEffect(() => {
     async function fetchData() {
-      // 1. Get Space Details
-      const { data: space } = await supabase.from('spaces').select('*').eq('id', spaceId).single();
-      if (space) {
+      setLoading(true);
+      
+      // Get current user ID once (used in multiple places)
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      const currentUserId = authUser?.id;
+
+      // Run all queries in parallel for better performance
+      const currentWeekDates = getDaysOfWeek(currentWeekStart).map(d => d.fullDate);
+      
+      // Only fetch signals for current week (not adjacent days - they're just visual)
+      const [spaceResult, signalsResult, messagesResult] = await Promise.all([
+        // 1. Get Space Details - only needed fields
+        supabase
+          .from('spaces')
+          .select('name, location, description, members_count, is_private, creator_id')
+          .eq('id', spaceId)
+          .single(),
+        
+        // 2. Get Signals - only for current week dates
+        supabase
+          .from('signals')
+          .select('date, hour, user_id')
+          .eq('space_id', spaceId)
+          .in('date', currentWeekDates),
+        
+        // 3. Get Messages - limit to last 50 messages for performance
+        supabase
+          .from('messages')
+          .select('id, content, created_at, user_id, sender_name')
+          .eq('space_id', spaceId)
+          .order('created_at', { ascending: false })
+          .limit(50)
+      ]);
+
+      // Process space data
+      if (spaceResult.data) {
+        const space = spaceResult.data;
         setSpaceName(space.name);
         setSpaceLocation(space.location || '');
         setSpaceDescription(space.description || '');
@@ -185,24 +219,12 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
         setCreatorId(space.creator_id || null);
       }
 
-      // 2. Get Signals (Heatmap) - filter by current week's dates plus adjacent days
-      const currentWeekDates = getDaysOfWeek(currentWeekStart).map(d => d.fullDate);
-      const { prevDay, nextDay } = getAdjacentDays(currentWeekStart);
-      const allDates = [...currentWeekDates, prevDay.fullDate, nextDay.fullDate];
-      
-      const { data: rawSignals } = await supabase
-        .from('signals')
-        .select('date, hour, user_id')
-        .eq('space_id', spaceId)
-        .in('date', allDates);
-      
-      if (rawSignals) {
+      // Process signals
+      if (signalsResult.data) {
         const signalMap: { [key: string]: number } = {};
         const mySignals = new Set<string>();
-        const currentUserId = (await supabase.auth.getUser()).data.user?.id;
 
-        rawSignals.forEach((sig: any) => {
-          // Use date-based key: "2024-01-15-1AM"
+        signalsResult.data.forEach((sig: any) => {
           const key = `${sig.date}-${sig.hour}`;
           signalMap[key] = (signalMap[key] || 0) + 1;
           
@@ -213,37 +235,37 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
         setSignals(signalMap);
         setUserSignals(mySignals);
       } else {
-        // Clear signals if none found for this week
         setSignals({});
         setUserSignals(new Set());
       }
 
-      // 3. Get Messages with user profiles
-      const { data: msgs } = await supabase
-        .from('messages')
-        .select('*, user_id')
-        .eq('space_id', spaceId)
-        .order('created_at', { ascending: true });
-      
-      if (msgs) {
-        // Fetch profiles for all unique user IDs in messages
+      // Process messages with profiles
+      if (messagesResult.data) {
+        const msgs = messagesResult.data.reverse(); // Reverse to show oldest first
         const userIds = [...new Set(msgs.map((m: any) => m.user_id).filter(Boolean))];
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, avatar_url, full_name')
-          .in('id', userIds);
         
-        // Map profiles to messages
-        const messagesWithAvatars = msgs.map((msg: any) => {
-          const profile = profiles?.find((p: any) => p.id === msg.user_id);
-          return {
-            ...msg,
-            avatar_url: profile?.avatar_url || null,
-            sender_name: profile?.full_name || msg.sender_name || 'User'
-          };
-        });
-        
-        setMessages(messagesWithAvatars);
+        // Fetch profiles only if there are messages
+        if (userIds.length > 0) {
+          const { data: profiles } = await supabase
+            .from('profiles')
+            .select('id, avatar_url, full_name')
+            .in('id', userIds);
+          
+          const messagesWithAvatars = msgs.map((msg: any) => {
+            const profile = profiles?.find((p: any) => p.id === msg.user_id);
+            return {
+              ...msg,
+              avatar_url: profile?.avatar_url || null,
+              sender_name: profile?.full_name || msg.sender_name || 'User'
+            };
+          });
+          
+          setMessages(messagesWithAvatars);
+        } else {
+          setMessages([]);
+        }
+      } else {
+        setMessages([]);
       }
       
       setLoading(false);
