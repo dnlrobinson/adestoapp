@@ -100,7 +100,7 @@ export default function CreateSpacePage() {
               id="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g., Belmont Harbor Dog Beach"
+              placeholder="e.g., Belmont Harbor Dog Beach!"
               className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors"
               required
             />
