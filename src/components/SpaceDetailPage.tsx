@@ -147,7 +147,7 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
 
-  // Fetch Data on Load
+  // Fetch Data on Load and when week changes
   useEffect(() => {
     async function fetchData() {
       // 1. Get Space Details
@@ -161,8 +161,13 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
         setCreatorId(space.creator_id || null);
       }
 
-      // 2. Get Signals (Heatmap)
-      const { data: rawSignals } = await supabase.from('signals').select('day, hour, user_id').eq('space_id', spaceId);
+      // 2. Get Signals (Heatmap) - filter by current week's dates
+      const currentWeekDates = getDaysOfWeek(currentWeekStart).map(d => d.fullDate);
+      const { data: rawSignals } = await supabase
+        .from('signals')
+        .select('date, hour, user_id')
+        .eq('space_id', spaceId)
+        .in('date', currentWeekDates);
       
       if (rawSignals) {
         const signalMap: { [key: string]: number } = {};
@@ -170,8 +175,8 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
         const currentUserId = (await supabase.auth.getUser()).data.user?.id;
 
         rawSignals.forEach((sig: any) => {
-          // Map database 'Mon' to local layout
-          const key = `${sig.day}-${sig.hour}`;
+          // Use date-based key: "2024-01-15-1AM"
+          const key = `${sig.date}-${sig.hour}`;
           signalMap[key] = (signalMap[key] || 0) + 1;
           
           if (currentUserId && sig.user_id === currentUserId) {
@@ -180,6 +185,10 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
         });
         setSignals(signalMap);
         setUserSignals(mySignals);
+      } else {
+        // Clear signals if none found for this week
+        setSignals({});
+        setUserSignals(new Set());
       }
 
       // 3. Get Messages with user profiles
@@ -213,14 +222,15 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
       setLoading(false);
     }
     fetchData();
-  }, [spaceId]);
+  }, [spaceId, currentWeekStart]);
 
   // --- ACTIONS ---
 
-  const handleAddSignal = async (dayName: string, hour: string) => {
+  const handleAddSignal = async (fullDate: string, hour: string) => {
     if (!user) return alert('Please log in to signal');
     
-    const key = `${dayName}-${hour}`;
+    // Use date-based key: "2024-01-15-1AM"
+    const key = `${fullDate}-${hour}`;
     const hasSignaled = userSignals.has(key);
     const userId = (await supabase.auth.getUser()).data.user?.id;
 
@@ -239,7 +249,7 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
       await supabase.from('signals').delete().match({
         space_id: spaceId,
         user_id: userId,
-        day: dayName,
+        date: fullDate,
         hour
       });
 
@@ -255,7 +265,7 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
       await supabase.from('signals').insert({
         space_id: spaceId,
         user_id: userId,
-        day: dayName,
+        date: fullDate,
         hour
       });
     }
@@ -430,17 +440,18 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
                         
                         {/* Grid Cells */}
                         {weekDays.map(day => {
-                          const count = signals[`${day.dayName}-${hour}`] || 0;
-                          const key = `${day.dayName}-${hour}`;
+                          // Use date-based key: "2024-01-15-1AM"
+                          const key = `${day.fullDate}-${hour}`;
+                          const count = signals[key] || 0;
                           const hasMySignal = userSignals.has(key);
                           const isSelectedDay = selectedDate === day.fullDate;
                           
                           return (
-                            <td key={`${day.dayName}-${hour}`} className={`p-0.5 border-b border-r border-gray-50 ${
+                            <td key={`${day.fullDate}-${hour}`} className={`p-0.5 border-b border-r border-gray-50 ${
                               isSelectedDay ? 'bg-gray-50/50' : ''
                             }`}>
                               <button
-                                onClick={() => handleAddSignal(day.dayName, hour)}
+                                onClick={() => handleAddSignal(day.fullDate, hour)}
                                 className={`w-full h-10 rounded-md flex items-center justify-center text-xs font-bold transition-all active:scale-95 ${getHeatmapColor(count, hasMySignal)}`}
                               >
                                 {count > 0 && count}
