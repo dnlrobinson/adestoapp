@@ -34,7 +34,7 @@ export function CreateSpacePage({ onNavigate, user }: CreateSpacePageProps) {
       }
 
       // 1. Send data to Supabase
-      const { error } = await supabase
+      const { data: newSpace, error } = await supabase
         .from('spaces')
         .insert({
           name,
@@ -42,12 +42,30 @@ export function CreateSpacePage({ onNavigate, user }: CreateSpacePageProps) {
           location,
           category,
           is_private: isPrivate,
-          creator_id: user.id, // Explicitly set the creator ID
-        });
+          creator_id: user.id,
+          members_count: 1, // Creator is the first member
+        })
+        .select()
+        .single();
 
       if (error) throw error;
+      if (!newSpace) throw new Error('Failed to create space');
 
-      // 2. If successful, go back to Explore to see the new space!
+      // 2. Add creator to space_members
+      const { error: memberError } = await supabase
+        .from('space_members')
+        .insert({
+          space_id: newSpace.id,
+          user_id: user.id,
+          role: 'creator'
+        });
+
+      if (memberError) {
+        console.error('Error adding creator to space_members:', memberError);
+        // Don't throw - space is created, just member record failed
+      }
+
+      // 3. If successful, go back to Explore to see the new space!
       onNavigate('explore');
       
     } catch (error: any) {
