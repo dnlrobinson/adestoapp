@@ -25,6 +25,14 @@ export function CreateSpacePage({ onNavigate, user }: CreateSpacePageProps) {
     setIsSubmitting(true);
 
     try {
+      // Get the current user's ID
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) {
+        alert('You must be logged in to create a space');
+        setIsSubmitting(false);
+        return;
+      }
+
       // 1. Send data to Supabase
       const { error } = await supabase
         .from('spaces')
@@ -34,8 +42,7 @@ export function CreateSpacePage({ onNavigate, user }: CreateSpacePageProps) {
           location,
           category,
           is_private: isPrivate,
-          // We assume RLS handles the 'created_by' via auth.uid(), 
-          // or we can explicitly pass it if needed, but RLS is safer.
+          creator_id: user.id, // Explicitly set the creator ID
         });
 
       if (error) throw error;
