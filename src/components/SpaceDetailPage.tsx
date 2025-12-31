@@ -50,6 +50,21 @@ const getDaysOfWeek = (startFromDate: Date = new Date()): WeekDay[] => {
   return days;
 };
 
+const getAdjacentDays = (currentWeekStart: Date) => {
+  const prevWeek = new Date(currentWeekStart);
+  prevWeek.setDate(prevWeek.getDate() - 7);
+  const prevWeekDays = getDaysOfWeek(prevWeek);
+  
+  const nextWeek = new Date(currentWeekStart);
+  nextWeek.setDate(nextWeek.getDate() + 7);
+  const nextWeekDays = getDaysOfWeek(nextWeek);
+  
+  return {
+    prevDay: prevWeekDays[prevWeekDays.length - 1], // Last day of previous week
+    nextDay: nextWeekDays[0] // First day of next week
+  };
+};
+
 export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPageProps) {
   const [activeTab, setActiveTab] = useState<'signal' | 'chat'>('signal');
   const [spaceName, setSpaceName] = useState('Loading...');
@@ -108,6 +123,7 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
   // Swipe Handlers
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStart.current = e.targetTouches[0].clientX;
+    touchEnd.current = e.targetTouches[0].clientX; // Initialize touchEnd
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
@@ -117,8 +133,16 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
   const handleTouchEnd = () => {
     if (!touchStart.current || !touchEnd.current) return;
     const distance = touchStart.current - touchEnd.current;
-    const isLeftSwipe = distance > 50;
-    const isRightSwipe = distance < -50;
+    const absDistance = Math.abs(distance);
+    
+    // Increased threshold from 50 to 100px for less sensitivity
+    // Also require minimum 20% of screen width for intentional swipe
+    const minSwipeDistance = 100;
+    const minSwipePercentage = window.innerWidth * 0.2;
+    const requiredDistance = Math.max(minSwipeDistance, minSwipePercentage);
+    
+    const isLeftSwipe = distance > requiredDistance;
+    const isRightSwipe = distance < -requiredDistance;
 
     if (isLeftSwipe) {
       // Next Week
@@ -161,13 +185,16 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
         setCreatorId(space.creator_id || null);
       }
 
-      // 2. Get Signals (Heatmap) - filter by current week's dates
+      // 2. Get Signals (Heatmap) - filter by current week's dates plus adjacent days
       const currentWeekDates = getDaysOfWeek(currentWeekStart).map(d => d.fullDate);
+      const { prevDay, nextDay } = getAdjacentDays(currentWeekStart);
+      const allDates = [...currentWeekDates, prevDay.fullDate, nextDay.fullDate];
+      
       const { data: rawSignals } = await supabase
         .from('signals')
         .select('date, hour, user_id')
         .eq('space_id', spaceId)
-        .in('date', currentWeekDates);
+        .in('date', allDates);
       
       if (rawSignals) {
         const signalMap: { [key: string]: number } = {};
@@ -387,7 +414,7 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
               activeTab === 'signal' ? 'text-black' : 'text-gray-400'
             }`}
           >
-            Schedule
+            Calendar
             {activeTab === 'signal' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-black mx-12 rounded-t-full"></div>}
           </button>
           <button
@@ -416,6 +443,20 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
                   <thead>
                     <tr>
                       <th className="p-2 w-14 sticky left-0 bg-white z-10 border-r border-gray-100"></th>
+                      {/* Previous week's last day - faded */}
+                      {(() => {
+                        const { prevDay } = getAdjacentDays(currentWeekStart);
+                        return (
+                          <th key={`prev-${prevDay.fullDate}`} className="p-2 min-w-[100px] text-center border-b border-gray-100 opacity-30">
+                            <div className="flex flex-col items-center justify-center gap-1 py-1">
+                              <span className="text-[11px] font-medium text-gray-400 uppercase tracking-wider">{prevDay.dayName}</span>
+                              <span className="text-base font-semibold text-gray-900">{prevDay.dayNumber}</span>
+                            </div>
+                          </th>
+                        );
+                      })()}
+                      
+                      {/* Current week days */}
                       {weekDays.map(day => (
                         <th key={day.fullDate} className={`p-2 min-w-[100px] text-center border-b border-gray-100 ${
                           selectedDate === day.fullDate ? 'bg-gray-50/50' : ''
@@ -428,6 +469,19 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
                           </div>
                         </th>
                       ))}
+                      
+                      {/* Next week's first day - faded */}
+                      {(() => {
+                        const { nextDay } = getAdjacentDays(currentWeekStart);
+                        return (
+                          <th key={`next-${nextDay.fullDate}`} className="p-2 min-w-[100px] text-center border-b border-gray-100 opacity-30">
+                            <div className="flex flex-col items-center justify-center gap-1 py-1">
+                              <span className="text-[11px] font-medium text-gray-400 uppercase tracking-wider">{nextDay.dayName}</span>
+                              <span className="text-base font-semibold text-gray-900">{nextDay.dayNumber}</span>
+                            </div>
+                          </th>
+                        );
+                      })()}
                     </tr>
                   </thead>
                   <tbody>
@@ -438,7 +492,24 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
                           {hour}
                         </td>
                         
-                        {/* Grid Cells */}
+                        {/* Previous week's last day column - faded */}
+                        {(() => {
+                          const { prevDay } = getAdjacentDays(currentWeekStart);
+                          const key = `${prevDay.fullDate}-${hour}`;
+                          const count = signals[key] || 0;
+                          return (
+                            <td key={`prev-${prevDay.fullDate}-${hour}`} className="p-0.5 border-b border-r border-gray-50 opacity-30">
+                              <button
+                                disabled
+                                className="w-full h-10 rounded-md flex items-center justify-center text-xs font-bold bg-gray-50 cursor-default"
+                              >
+                                {count > 0 && count}
+                              </button>
+                            </td>
+                          );
+                        })()}
+                        
+                        {/* Current week grid cells */}
                         {weekDays.map(day => {
                           // Use date-based key: "2024-01-15-1AM"
                           const key = `${day.fullDate}-${hour}`;
@@ -459,6 +530,23 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
                             </td>
                           );
                         })}
+                        
+                        {/* Next week's first day column - faded */}
+                        {(() => {
+                          const { nextDay } = getAdjacentDays(currentWeekStart);
+                          const key = `${nextDay.fullDate}-${hour}`;
+                          const count = signals[key] || 0;
+                          return (
+                            <td key={`next-${nextDay.fullDate}-${hour}`} className="p-0.5 border-b border-r border-gray-50 opacity-30">
+                              <button
+                                disabled
+                                className="w-full h-10 rounded-md flex items-center justify-center text-xs font-bold bg-gray-50 cursor-default"
+                              >
+                                {count > 0 && count}
+                              </button>
+                            </td>
+                          );
+                        })()}
                       </tr>
                     ))}
                   </tbody>
