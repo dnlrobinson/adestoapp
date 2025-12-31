@@ -79,6 +79,17 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
     });
   }, []);
 
+  // Debug: Log creator check
+  useEffect(() => {
+    if (creatorId && currentUserId) {
+      console.log('Creator check:', {
+        creatorId,
+        currentUserId,
+        isCreator: creatorId === currentUserId
+      });
+    }
+  }, [creatorId, currentUserId]);
+
   // Auto-scroll to 8AM
   useLayoutEffect(() => {
     if (activeTab === 'signal' && scrollRef.current) {
@@ -272,46 +283,10 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
       {/* Header */}
       <div className="bg-white border-b border-gray-100 sticky top-0 z-20">
         <div className="max-w-2xl mx-auto px-4 pt-4 pb-2">
-          <button onClick={() => onNavigate('explore')} className="flex items-center gap-2 text-gray-600 mb-4">
-            <ArrowLeft className="w-5 h-5" /> Back
-          </button>
-          
-          <div className="flex items-start justify-between mb-6">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">{spaceName}</h1>
-              
-              {/* Meta Info Row */}
-              <div className="flex items-center gap-3 mt-2 text-sm text-gray-600">
-                <div className="flex items-center gap-1">
-                  <Users className="w-4 h-4" />
-                  <span>{memberCount} members</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  {isPrivate ? (
-                    <>
-                      <Lock className="w-4 h-4" />
-                      <span>Private</span>
-                    </>
-                  ) : (
-                    <>
-                      <Globe className="w-4 h-4" />
-                      <span>Public</span>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-1 text-gray-500 text-sm mt-1">
-                <MapPin className="w-4 h-4" /> {spaceLocation}
-              </div>
-              
-              {spaceDescription && (
-                <p className="text-gray-600 mt-3 text-sm leading-relaxed">
-                  {spaceDescription}
-                </p>
-              )}
-            </div>
-
+          <div className="flex items-center justify-between mb-4">
+            <button onClick={() => onNavigate('explore')} className="flex items-center gap-2 text-gray-600">
+              <ArrowLeft className="w-5 h-5" /> Back
+            </button>
             {creatorId && currentUserId === creatorId && (
               <button
                 onClick={() => onNavigate('admin', spaceId)}
@@ -320,6 +295,41 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
                 <Shield className="w-4 h-4" />
                 <span className="text-sm">Admin Tools</span>
               </button>
+            )}
+          </div>
+          
+          <div className="mb-6">
+            <h1 className="text-2xl font-bold text-gray-900">{spaceName}</h1>
+            
+            {/* Meta Info Row */}
+            <div className="flex items-center gap-3 mt-2 text-sm text-gray-600">
+              <div className="flex items-center gap-1">
+                <Users className="w-4 h-4" />
+                <span>{memberCount} members</span>
+              </div>
+              <div className="flex items-center gap-1">
+                {isPrivate ? (
+                  <>
+                    <Lock className="w-4 h-4" />
+                    <span>Private</span>
+                  </>
+                ) : (
+                  <>
+                    <Globe className="w-4 h-4" />
+                    <span>Public</span>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1 text-gray-500 text-sm mt-1">
+              <MapPin className="w-4 h-4" /> {spaceLocation}
+            </div>
+            
+            {spaceDescription && (
+              <p className="text-gray-600 mt-3 text-sm leading-relaxed">
+                {spaceDescription}
+              </p>
             )}
           </div>
         </div>
