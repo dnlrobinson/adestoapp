@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useLayoutEffect } from 'react';
-import { MapPin, ArrowLeft, MessageCircle, Calendar, Send, Loader2, ChevronRight, ChevronLeft, Users, Lock, Globe, Shield } from 'lucide-react';
+import { MapPin, ArrowLeft, Send, Loader2, Users, Lock, Globe, Shield } from 'lucide-react';
 import { Page, User } from '../App';
 import { BottomNav } from './BottomNav';
 import { supabase } from '../lib/supabase';
@@ -17,7 +17,9 @@ const HOURS = [
   '12PM', '1PM', '2PM', '3PM', '4PM', '5PM', '6PM', '7PM', '8PM', '9PM', '10PM', '11PM'
 ];
 
-// Helper to get the current week's dates
+// Limit view to yesterday, today, and the next few days
+const DAYS_WINDOW = 7; // yesterday + today + 5 following days
+
 interface WeekDay {
   date: Date;
   dayName: string;
@@ -28,41 +30,25 @@ interface WeekDay {
   isToday: boolean;
 }
 
-const getDaysOfWeek = (startFromDate: Date = new Date()): WeekDay[] => {
+const getDaysWindow = (): WeekDay[] => {
   const days: WeekDay[] = [];
-  // Start from the most recent Sunday (or Monday if you prefer)
-  const start = new Date(startFromDate);
-  start.setDate(start.getDate() - start.getDay()); // Go back to Sunday
+  const start = new Date();
+  start.setDate(start.getDate() - 1); // yesterday
 
-  for (let i = 0; i < 7; i++) {
+  for (let i = 0; i < DAYS_WINDOW; i++) {
     const d = new Date(start);
     d.setDate(start.getDate() + i);
     days.push({
       date: d,
-      dayName: d.toLocaleDateString('en-US', { weekday: 'short' }), // "Mon"
-      dayLetter: d.toLocaleDateString('en-US', { weekday: 'narrow' }), // "M"
-      monthName: d.toLocaleDateString('en-US', { month: 'short' }), // "Dec"
-      dayNumber: d.getDate(), // 29
-      fullDate: d.toISOString().split('T')[0], // "2023-11-29"
+      dayName: d.toLocaleDateString('en-US', { weekday: 'short' }),
+      dayLetter: d.toLocaleDateString('en-US', { weekday: 'narrow' }),
+      monthName: d.toLocaleDateString('en-US', { month: 'short' }),
+      dayNumber: d.getDate(),
+      fullDate: d.toISOString().split('T')[0],
       isToday: new Date().toDateString() === d.toDateString()
     });
   }
   return days;
-};
-
-const getAdjacentDays = (currentWeekStart: Date) => {
-  const prevWeek = new Date(currentWeekStart);
-  prevWeek.setDate(prevWeek.getDate() - 7);
-  const prevWeekDays = getDaysOfWeek(prevWeek);
-  
-  const nextWeek = new Date(currentWeekStart);
-  nextWeek.setDate(nextWeek.getDate() + 7);
-  const nextWeekDays = getDaysOfWeek(nextWeek);
-  
-  return {
-    prevDay: prevWeekDays[prevWeekDays.length - 1], // Last day of previous week
-    nextDay: nextWeekDays[0] // First day of next week
-  };
 };
 
 export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPageProps) {
@@ -74,18 +60,12 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
   const [isPrivate, setIsPrivate] = useState(false);
   const [creatorId, setCreatorId] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  
-  const [weekDays, setWeekDays] = useState<WeekDay[]>([]);
-  const [currentWeekStart, setCurrentWeekStart] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
-  // Update weekDays when currentWeekStart changes
-  useEffect(() => {
-    setWeekDays(getDaysOfWeek(currentWeekStart));
-  }, [currentWeekStart]);
+  const daysWindow = useMemo(() => getDaysWindow(), []);
 
   useEffect(() => {
     let isMounted = true;
@@ -123,21 +103,8 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
     }
   }, [activeTab]);
 
-  // Arrow Navigation Handlers
-  const handlePreviousWeek = () => {
-    const prev = new Date(currentWeekStart);
-    prev.setDate(prev.getDate() - 7);
-    setCurrentWeekStart(prev);
-  };
-
-  const handleNextWeek = () => {
-    const next = new Date(currentWeekStart);
-    next.setDate(next.getDate() + 7);
-    setCurrentWeekStart(next);
-  };
-
   const handleToday = () => {
-    setCurrentWeekStart(new Date());
+    setSelectedDate(new Date().toISOString().split('T')[0]);
   };
 
 
@@ -152,8 +119,8 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
   const userSignalsRef = useRef(userSignals);
 
   const weekDatesSet = useMemo(
-    () => new Set(getDaysOfWeek(currentWeekStart).map(d => d.fullDate)),
-    [currentWeekStart]
+    () => new Set(daysWindow.map(d => d.fullDate)),
+    [daysWindow]
   );
 
   useEffect(() => {
@@ -196,7 +163,7 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
         'postgres_changes',
         { event: '*', schema: 'public', table: 'signals', filter: `space_id=eq.${spaceId}` },
         (payload) => {
-          const record = payload.new || payload.old;
+          const record = (payload.new || payload.old) as { date?: string; hour?: string; user_id?: string } | null;
           if (!record) return;
           const key = `${record.date}-${record.hour}`;
           if (!weekDatesSet.has(record.date)) return;
@@ -252,12 +219,12 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
     };
   }, [spaceId, currentUserId, weekDatesSet]);
 
-  // Fetch signals when week changes
+  // Fetch signals for the limited window
   useEffect(() => {
     let isMounted = true;
     async function fetchSignals() {
       setSignalsLoading(true);
-      const currentWeekDates = getDaysOfWeek(currentWeekStart).map(d => d.fullDate);
+      const currentWeekDates = Array.from(weekDatesSet);
       const { data } = await supabase
         .from('signals')
         .select('date, hour, user_id')
@@ -288,7 +255,7 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
     return () => {
       isMounted = false;
     };
-  }, [spaceId, currentWeekStart, currentUserId]);
+  }, [spaceId, currentUserId, weekDatesSet]);
 
   // Fetch messages once per space
   useEffect(() => {
@@ -556,33 +523,7 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
                   <thead>
                     <tr>
                       <th className="p-2 w-14 sticky left-0 bg-white z-10 border-r border-gray-100"></th>
-                      
-                      {/* Left Arrow Button */}
-                      <th className="p-2 w-12 border-b border-gray-100">
-                        <button
-                          onClick={handlePreviousWeek}
-                          className="w-full h-full flex items-center justify-center hover:bg-gray-50 rounded transition-colors"
-                          aria-label="Previous week"
-                        >
-                          <ChevronLeft className="w-5 h-5 text-gray-600" />
-                        </button>
-                      </th>
-                      
-                      {/* Previous week's last day - faded */}
-                      {(() => {
-                        const { prevDay } = getAdjacentDays(currentWeekStart);
-                        return (
-                          <th key={`prev-${prevDay.fullDate}`} className="p-2 min-w-[100px] text-center border-b border-gray-100 opacity-30">
-                            <div className="flex flex-col items-center justify-center gap-1 py-1">
-                              <span className="text-[11px] font-medium text-gray-400 uppercase tracking-wider">{prevDay.dayName}</span>
-                              <span className="text-base font-semibold text-gray-900">{prevDay.dayNumber}</span>
-                            </div>
-                          </th>
-                        );
-                      })()}
-                      
-                      {/* Current week days */}
-                      {weekDays.map(day => (
+                      {daysWindow.map(day => (
                         <th key={day.fullDate} className={`p-2 min-w-[100px] text-center border-b border-gray-100 ${
                           selectedDate === day.fullDate ? 'bg-gray-50/50' : ''
                         }`}>
@@ -594,30 +535,6 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
                           </div>
                         </th>
                       ))}
-                      
-                      {/* Next week's first day - faded */}
-                      {(() => {
-                        const { nextDay } = getAdjacentDays(currentWeekStart);
-                        return (
-                          <th key={`next-${nextDay.fullDate}`} className="p-2 min-w-[100px] text-center border-b border-gray-100 opacity-30">
-                            <div className="flex flex-col items-center justify-center gap-1 py-1">
-                              <span className="text-[11px] font-medium text-gray-400 uppercase tracking-wider">{nextDay.dayName}</span>
-                              <span className="text-base font-semibold text-gray-900">{nextDay.dayNumber}</span>
-                            </div>
-                          </th>
-                        );
-                      })()}
-                      
-                      {/* Right Arrow Button */}
-                      <th className="p-2 w-12 border-b border-gray-100">
-                        <button
-                          onClick={handleNextWeek}
-                          className="w-full h-full flex items-center justify-center hover:bg-gray-50 rounded transition-colors"
-                          aria-label="Next week"
-                        >
-                          <ChevronRight className="w-5 h-5 text-gray-600" />
-                        </button>
-                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -627,29 +544,8 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
                         <td className="p-2 border-r border-gray-100 text-[10px] text-gray-400 font-medium text-center sticky left-0 bg-white z-10">
                           {hour}
                         </td>
-                        
-                        {/* Empty cell for left arrow column */}
-                        <td className="p-0.5 border-b border-r border-gray-50"></td>
-                        
-                        {/* Previous week's last day column - faded */}
-                        {(() => {
-                          const { prevDay } = getAdjacentDays(currentWeekStart);
-                          const key = `${prevDay.fullDate}-${hour}`;
-                          const count = signals[key] || 0;
-                          return (
-                            <td key={`prev-${prevDay.fullDate}-${hour}`} className="p-0.5 border-b border-r border-gray-50 opacity-30">
-                              <button
-                                disabled
-                                className="w-full h-10 rounded-md flex items-center justify-center text-xs font-bold bg-gray-50 cursor-default"
-                              >
-                                {count > 0 && count}
-                              </button>
-                            </td>
-                          );
-                        })()}
-                        
-                        {/* Current week grid cells */}
-                        {weekDays.map(day => {
+                        {/* Limited window grid cells */}
+                        {daysWindow.map(day => {
                           // Use date-based key: "2024-01-15-1AM"
                           const key = `${day.fullDate}-${hour}`;
                           const count = signals[key] || 0;
@@ -669,26 +565,6 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
                             </td>
                           );
                         })}
-                        
-                        {/* Next week's first day column - faded */}
-                        {(() => {
-                          const { nextDay } = getAdjacentDays(currentWeekStart);
-                          const key = `${nextDay.fullDate}-${hour}`;
-                          const count = signals[key] || 0;
-                          return (
-                            <td key={`next-${nextDay.fullDate}-${hour}`} className="p-0.5 border-b border-r border-gray-50 opacity-30">
-                              <button
-                                disabled
-                                className="w-full h-10 rounded-md flex items-center justify-center text-xs font-bold bg-gray-50 cursor-default"
-                              >
-                                {count > 0 && count}
-                              </button>
-                            </td>
-                          );
-                        })()}
-                        
-                        {/* Empty cell for right arrow column */}
-                        <td className="p-0.5 border-b border-r border-gray-50"></td>
                       </tr>
                     ))}
                   </tbody>
