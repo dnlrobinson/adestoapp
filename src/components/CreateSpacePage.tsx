@@ -91,7 +91,7 @@ export function CreateSpacePage({ onNavigate, user }: CreateSpacePageProps) {
               id="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g., Shared Laundry Room"
+              placeholder="e.g., Belmont Harbor Dog Beach"
               className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors"
               required
             />
@@ -123,7 +123,7 @@ export function CreateSpacePage({ onNavigate, user }: CreateSpacePageProps) {
               id="location"
               value={location}
               onChange={(e) => setLocation(e.target.value)}
-              placeholder="e.g., Building A Basement"
+              placeholder="e.g., Lake Shore Dr and Hawthorne Place"
               className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors"
               required
             />
