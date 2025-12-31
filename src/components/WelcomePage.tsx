@@ -19,7 +19,7 @@ export function WelcomePage({ onSignUp }: WelcomePageProps) {
               <rect x="14" y="14" width="7" height="7" rx="1" />
             </svg>
           </div>
-          <h1 className="text-4xl mb-4 text-gray-900">Welcome to Spaces</h1>
+          <h1 className="text-4xl mb-4 text-gray-900">Welcome to Adesto</h1>
           <p className="text-gray-600 text-lg leading-relaxed">
             Connect with neighbors, signal intent, and coordinate shared spaces together
           </p>
