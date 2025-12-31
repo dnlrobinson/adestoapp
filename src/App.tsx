@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, useNavigate, useLocation, Navigate, useParams } from 'react-router-dom';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import { supabase } from './lib/supabase';
 import { WelcomePage } from './components/WelcomePage';
 import { OnboardingPage } from './components/OnboardingPage';
@@ -41,29 +42,59 @@ export default function App() {
 
   useEffect(() => {
     async function fetchUser() {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (authUser) {
-        // Fetch only needed profile fields
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('full_name, location, bio, avatar_url')
-          .eq('id', authUser.id)
-          .single();
-
-        setUser({
-          fullName: profile?.full_name || authUser.user_metadata.full_name || authUser.email?.split('@')[0] || 'User',
-          location: profile?.location || '',
-          bio: profile?.bio || '',
-          email: authUser.email,
-          avatar: profile?.avatar_url || authUser.user_metadata.avatar_url
-        });
-
-        // If on root or welcome, go to explore
-        if (location.pathname === '/' || location.pathname === '/welcome') {
-          navigate('/explore');
+      try {
+        const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+        
+        if (authError) {
+          console.error('Error fetching user:', authError);
+          setLoading(false);
+          return;
         }
+
+        if (authUser) {
+          try {
+            // Fetch only needed profile fields
+            const { data: profile, error: profileError } = await supabase
+              .from('profiles')
+              .select('full_name, location, bio, avatar_url')
+              .eq('id', authUser.id)
+              .single();
+
+            // Handle profile errors gracefully (profile might not exist yet)
+            if (profileError && profileError.code !== 'PGRST116') {
+              console.error('Error fetching profile:', profileError);
+            }
+
+            setUser({
+              fullName: profile?.full_name || authUser.user_metadata.full_name || authUser.email?.split('@')[0] || 'User',
+              location: profile?.location || '',
+              bio: profile?.bio || '',
+              email: authUser.email,
+              avatar: profile?.avatar_url || authUser.user_metadata.avatar_url
+            });
+
+            // If on root or welcome, go to explore
+            if (location.pathname === '/' || location.pathname === '/welcome') {
+              navigate('/explore');
+            }
+          } catch (profileErr) {
+            console.error('Error processing profile:', profileErr);
+            // Still set user with basic info even if profile fetch fails
+            setUser({
+              fullName: authUser.user_metadata.full_name || authUser.email?.split('@')[0] || 'User',
+              location: '',
+              bio: '',
+              email: authUser.email,
+              avatar: authUser.user_metadata.avatar_url
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error in fetchUser:', error);
+      } finally {
+        // Always set loading to false, even if there's an error
+        setLoading(false);
       }
-      setLoading(false);
     }
 
     fetchUser();
@@ -71,24 +102,40 @@ export default function App() {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user) {
-        // Fetch only needed profile fields
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('full_name, location, bio, avatar_url')
-          .eq('id', session.user.id)
-          .single();
+        try {
+          // Fetch only needed profile fields
+          const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('full_name, location, bio, avatar_url')
+            .eq('id', session.user.id)
+            .single();
 
-        setUser({
-          fullName: profile?.full_name || session.user.user_metadata.full_name || session.user.email?.split('@')[0] || 'User',
-          location: profile?.location || '',
-          bio: profile?.bio || '',
-          email: session.user.email,
-          avatar: profile?.avatar_url || session.user.user_metadata.avatar_url
-        });
+          if (profileError && profileError.code !== 'PGRST116') {
+            console.error('Error fetching profile in auth change:', profileError);
+          }
 
-        // Only redirect to explore if we're on welcome page
-        if (location.pathname === '/' || location.pathname === '/welcome') {
-          navigate('/explore');
+          setUser({
+            fullName: profile?.full_name || session.user.user_metadata.full_name || session.user.email?.split('@')[0] || 'User',
+            location: profile?.location || '',
+            bio: profile?.bio || '',
+            email: session.user.email,
+            avatar: profile?.avatar_url || session.user.user_metadata.avatar_url
+          });
+
+          // Only redirect to explore if we're on welcome page
+          if (location.pathname === '/' || location.pathname === '/welcome') {
+            navigate('/explore');
+          }
+        } catch (error) {
+          console.error('Error in auth state change:', error);
+          // Still set user with basic info
+          setUser({
+            fullName: session.user.user_metadata.full_name || session.user.email?.split('@')[0] || 'User',
+            location: '',
+            bio: '',
+            email: session.user.email,
+            avatar: session.user.user_metadata.avatar_url
+          });
         }
       } else {
         setUser(null);
@@ -179,6 +226,7 @@ export default function App() {
         {/* Catch-all route - redirects to explore if authenticated, otherwise welcome */}
         <Route path="*" element={<Navigate to={user ? "/explore" : "/"} replace />} />
       </Routes>
+      <SpeedInsights />
     </div>
   );
 }
