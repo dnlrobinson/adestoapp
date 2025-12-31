@@ -43,10 +43,10 @@ export default function App() {
     async function fetchUser() {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (authUser) {
-        // Fetch profile from profiles table
+        // Fetch only needed profile fields
         const { data: profile } = await supabase
           .from('profiles')
-          .select('*')
+          .select('full_name, location, bio, avatar_url')
           .eq('id', authUser.id)
           .single();
 
@@ -71,10 +71,10 @@ export default function App() {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user) {
-        // Fetch profile from profiles table
+        // Fetch only needed profile fields
         const { data: profile } = await supabase
           .from('profiles')
-          .select('*')
+          .select('full_name, location, bio, avatar_url')
           .eq('id', session.user.id)
           .single();
 
@@ -97,7 +97,7 @@ export default function App() {
     });
 
     return () => subscription.unsubscribe();
-  }, [navigate, location.pathname]);
+  }, [navigate]); // Removed location.pathname to prevent unnecessary re-fetches
 
   const handleNavigate = (page: Page, spaceId?: string) => {
     if (page === 'space-detail' && spaceId) {
@@ -121,7 +121,7 @@ export default function App() {
     if (authUser) {
       const { data: profile } = await supabase
         .from('profiles')
-        .select('*')
+        .select('full_name, location, bio, avatar_url')
         .eq('id', authUser.id)
         .single();
 

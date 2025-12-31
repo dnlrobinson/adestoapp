@@ -37,7 +37,7 @@ export function ProfilePage({ onNavigate, user, onSignOut }: ProfilePageProps) {
 
         const { data: profileData, error } = await supabase
           .from('profiles')
-          .select('*')
+          .select('full_name, location, bio, avatar_url, created_at')
           .eq('id', authUser.id)
           .single();
 
@@ -85,11 +85,11 @@ export function ProfilePage({ onNavigate, user, onSignOut }: ProfilePageProps) {
           return;
         }
 
-        // Fetch full space details
+        // Fetch full space details - only needed fields
         const spaceIds = membersData.map(m => m.space_id).filter(Boolean);
         const { data: spacesData, error: spacesError } = await supabase
           .from('spaces')
-          .select('*')
+          .select('id, name, location, creator_id')
           .in('id', spaceIds);
 
         if (spacesError) {

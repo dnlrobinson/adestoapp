@@ -32,7 +32,7 @@ export function EditProfilePage({ onNavigate, user, onProfileUpdated }: EditProf
 
         const { data: profileData } = await supabase
           .from('profiles')
-          .select('*')
+          .select('full_name, location, bio, avatar_url, email')
           .eq('id', authUser.id)
           .single();
 
