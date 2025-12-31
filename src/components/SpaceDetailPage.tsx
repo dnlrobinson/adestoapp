@@ -112,8 +112,6 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
 
   const handleTouchMove = (e: React.TouchEvent) => {
     touchEnd.current = e.targetTouches[0].clientX;
-    // Prevent default scrolling during swipe to avoid misalignment
-    e.preventDefault();
   };
 
   const handleTouchEnd = () => {
@@ -396,7 +394,7 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
         {/* --- SIGNAL TAB (HEATMAP) --- */}
         {activeTab === 'signal' && (
           <div 
-            className="bg-white overflow-hidden" 
+            className="bg-white" 
             ref={scrollRef}
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
@@ -409,7 +407,7 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
                     <tr>
                       <th className="p-2 w-14 sticky left-0 bg-white z-10 border-r border-gray-100"></th>
                       {weekDays.map(day => (
-                        <th key={day.fullDate} className={`p-2 w-[100px] text-center border-b border-gray-100 ${
+                        <th key={day.fullDate} className={`p-2 min-w-[100px] text-center border-b border-gray-100 ${
                           selectedDate === day.fullDate ? 'bg-gray-50/50' : ''
                         }`}>
                           <div className="flex flex-col items-center justify-center gap-1 py-1">
@@ -438,7 +436,7 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
                           const isSelectedDay = selectedDate === day.fullDate;
                           
                           return (
-                            <td key={`${day.dayName}-${hour}`} className={`p-0.5 border-b border-r border-gray-50 w-[100px] ${
+                            <td key={`${day.dayName}-${hour}`} className={`p-0.5 border-b border-r border-gray-50 ${
                               isSelectedDay ? 'bg-gray-50/50' : ''
                             }`}>
                               <button
