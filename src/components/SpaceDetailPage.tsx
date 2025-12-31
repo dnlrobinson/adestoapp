@@ -88,9 +88,14 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
   }, [currentWeekStart]);
 
   useEffect(() => {
+    let isMounted = true;
     supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!isMounted) return;
       setCurrentUserId(user?.id || null);
     });
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // Debug: Log creator check
@@ -141,65 +146,132 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
   const [userSignals, setUserSignals] = useState<Set<string>>(new Set()); // Track which cells current user has clicked
   const [messages, setMessages] = useState<any[]>([]);
   const [newMessage, setNewMessage] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [signalsLoading, setSignalsLoading] = useState(true);
+  const [messagesLoading, setMessagesLoading] = useState(true);
+  const [spaceLoading, setSpaceLoading] = useState(true);
+  const userSignalsRef = useRef(userSignals);
 
-  // Fetch Data on Load and when week changes
+  const weekDatesSet = useMemo(
+    () => new Set(getDaysOfWeek(currentWeekStart).map(d => d.fullDate)),
+    [currentWeekStart]
+  );
+
   useEffect(() => {
-    async function fetchData() {
-      setLoading(true);
-      
-      // Get current user ID once (used in multiple places)
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      const currentUserId = authUser?.id;
+    userSignalsRef.current = userSignals;
+  }, [userSignals]);
 
-      // Run all queries in parallel for better performance
-      const currentWeekDates = getDaysOfWeek(currentWeekStart).map(d => d.fullDate);
-      
-      // Only fetch signals for current week (not adjacent days - they're just visual)
-      const [spaceResult, signalsResult, messagesResult] = await Promise.all([
-        // 1. Get Space Details - only needed fields
-        supabase
-          .from('spaces')
-          .select('name, location, description, members_count, is_private, creator_id')
-          .eq('id', spaceId)
-          .single(),
-        
-        // 2. Get Signals - only for current week dates
-        supabase
-          .from('signals')
-          .select('date, hour, user_id')
-          .eq('space_id', spaceId)
-          .in('date', currentWeekDates),
-        
-        // 3. Get Messages - limit to last 50 messages for performance
-        supabase
-          .from('messages')
-          .select('id, content, created_at, user_id, sender_name')
-          .eq('space_id', spaceId)
-          .order('created_at', { ascending: false })
-          .limit(50)
-      ]);
+  // Fetch space details once per space
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchSpace() {
+      const { data } = await supabase
+        .from('spaces')
+        .select('name, location, description, members_count, is_private, creator_id')
+        .eq('id', spaceId)
+        .single();
 
-      // Process space data
-      if (spaceResult.data) {
-        const space = spaceResult.data;
-        setSpaceName(space.name);
-        setSpaceLocation(space.location || '');
-        setSpaceDescription(space.description || '');
-        setMemberCount(space.members_count || 0);
-        setIsPrivate(space.is_private || false);
-        setCreatorId(space.creator_id || null);
+      if (!isMounted) return;
+
+      if (data) {
+        setSpaceName(data.name);
+        setSpaceLocation(data.location || '');
+        setSpaceDescription(data.description || '');
+        setMemberCount(data.members_count || 0);
+        setIsPrivate(data.is_private || false);
+        setCreatorId(data.creator_id || null);
       }
+      setSpaceLoading(false);
+    }
 
-      // Process signals
-      if (signalsResult.data) {
+    fetchSpace();
+    return () => {
+      isMounted = false;
+    };
+  }, [spaceId]);
+
+  // Realtime updates for signals and messages
+  useEffect(() => {
+    const channel = supabase.channel(`space-realtime-${spaceId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'signals', filter: `space_id=eq.${spaceId}` },
+        (payload) => {
+          const record = payload.new || payload.old;
+          if (!record) return;
+          const key = `${record.date}-${record.hour}`;
+          if (!weekDatesSet.has(record.date)) return;
+
+          // Avoid double-applying the current user's optimistic update
+          if (payload.eventType === 'INSERT' && record.user_id === currentUserId && userSignalsRef.current.has(key)) {
+            return;
+          }
+          if (payload.eventType === 'DELETE' && record.user_id === currentUserId && !userSignalsRef.current.has(key)) {
+            return;
+          }
+
+          setSignals(prev => {
+            const next = { ...prev };
+            if (payload.eventType === 'INSERT') {
+              next[key] = (next[key] || 0) + 1;
+            }
+            if (payload.eventType === 'DELETE') {
+              next[key] = Math.max(0, (next[key] || 1) - 1);
+            }
+            return next;
+          });
+
+          setUserSignals(prev => {
+            if (!currentUserId) return prev;
+            const next = new Set(prev);
+            if (payload.eventType === 'INSERT' && record.user_id === currentUserId) {
+              next.add(key);
+            }
+            if (payload.eventType === 'DELETE' && record.user_id === currentUserId) {
+              next.delete(key);
+            }
+            return next;
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages', filter: `space_id=eq.${spaceId}` },
+        (payload) => {
+          const message = payload.new;
+          if (!message) return;
+          setMessages(prev => {
+            if (prev.some(m => m.id === message.id)) return prev;
+            return [...prev, message];
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [spaceId, currentUserId, weekDatesSet]);
+
+  // Fetch signals when week changes
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchSignals() {
+      setSignalsLoading(true);
+      const currentWeekDates = getDaysOfWeek(currentWeekStart).map(d => d.fullDate);
+      const { data } = await supabase
+        .from('signals')
+        .select('date, hour, user_id')
+        .eq('space_id', spaceId)
+        .in('date', currentWeekDates);
+
+      if (!isMounted) return;
+
+      if (data) {
         const signalMap: { [key: string]: number } = {};
         const mySignals = new Set<string>();
-
-        signalsResult.data.forEach((sig: any) => {
+        data.forEach((sig: any) => {
           const key = `${sig.date}-${sig.hour}`;
           signalMap[key] = (signalMap[key] || 0) + 1;
-          
           if (currentUserId && sig.user_id === currentUserId) {
             mySignals.add(key);
           }
@@ -210,19 +282,38 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
         setSignals({});
         setUserSignals(new Set());
       }
+      setSignalsLoading(false);
+    }
+    fetchSignals();
+    return () => {
+      isMounted = false;
+    };
+  }, [spaceId, currentWeekStart, currentUserId]);
 
-      // Process messages with profiles
-      if (messagesResult.data) {
-        const msgs = messagesResult.data.reverse(); // Reverse to show oldest first
+  // Fetch messages once per space
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchMessages() {
+      setMessagesLoading(true);
+      const { data: messagesResult } = await supabase
+        .from('messages')
+        .select('id, content, created_at, user_id, sender_name')
+        .eq('space_id', spaceId)
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (!isMounted) return;
+
+      if (messagesResult) {
+        const msgs = messagesResult.reverse(); // oldest first
         const userIds = [...new Set(msgs.map((m: any) => m.user_id).filter(Boolean))];
-        
-        // Fetch profiles only if there are messages
+
         if (userIds.length > 0) {
           const { data: profiles } = await supabase
             .from('profiles')
             .select('id, avatar_url, full_name')
             .in('id', userIds);
-          
+
           const messagesWithAvatars = msgs.map((msg: any) => {
             const profile = profiles?.find((p: any) => p.id === msg.user_id);
             return {
@@ -231,31 +322,29 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
               sender_name: profile?.full_name || msg.sender_name || 'User'
             };
           });
-          
           setMessages(messagesWithAvatars);
         } else {
-          setMessages([]);
+          setMessages(msgs);
         }
       } else {
         setMessages([]);
       }
-      
-      setLoading(false);
+      setMessagesLoading(false);
     }
-    fetchData();
-  }, [spaceId, currentWeekStart]);
+    fetchMessages();
+    return () => {
+      isMounted = false;
+    };
+  }, [spaceId]);
 
   // --- ACTIONS ---
 
   const handleAddSignal = async (fullDate: string, hour: string) => {
-    if (!user) return alert('Please log in to signal');
+    if (!user || !currentUserId) return alert('Please log in to signal');
     
     // Use date-based key: "2024-01-15-1AM"
     const key = `${fullDate}-${hour}`;
     const hasSignaled = userSignals.has(key);
-    const userId = (await supabase.auth.getUser()).data.user?.id;
-
-    if (!userId) return;
 
     // Optimistic Update
     if (hasSignaled) {
@@ -269,7 +358,7 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
 
       await supabase.from('signals').delete().match({
         space_id: spaceId,
-        user_id: userId,
+        user_id: currentUserId,
         date: fullDate,
         hour
       });
@@ -285,7 +374,7 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
 
       await supabase.from('signals').insert({
         space_id: spaceId,
-        user_id: userId,
+        user_id: currentUserId,
         date: fullDate,
         hour
       });
@@ -294,19 +383,16 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || !user) return;
+    if (!newMessage.trim() || !user || !currentUserId) return;
 
     const msgContent = newMessage;
     setNewMessage(''); 
-
-    const { data: { user: authUser } } = await supabase.auth.getUser();
-    if (!authUser) return;
 
     // Get current user's profile for avatar
     const { data: profile } = await supabase
       .from('profiles')
       .select('avatar_url, full_name')
-      .eq('id', authUser.id)
+      .eq('id', currentUserId)
       .single();
 
     const fakeMsg = { 
@@ -315,16 +401,39 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
       content: msgContent, 
       created_at: new Date().toISOString(),
       avatar_url: profile?.avatar_url || user.avatar || null,
-      user_id: authUser.id
+      user_id: currentUserId
     };
     setMessages(prev => [...prev, fakeMsg]);
 
-    await supabase.from('messages').insert({
-      space_id: spaceId,
-      user_id: authUser.id,
-      sender_name: profile?.full_name || user.fullName,
-      content: msgContent
-    });
+    const { data: inserted, error } = await supabase
+      .from('messages')
+      .insert({
+        space_id: spaceId,
+        user_id: currentUserId,
+        sender_name: profile?.full_name || user.fullName,
+        content: msgContent
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error sending message:', error);
+      return;
+    }
+
+    if (inserted) {
+      const withAvatar = {
+        ...inserted,
+        avatar_url: profile?.avatar_url || user.avatar || null,
+        sender_name: profile?.full_name || inserted.sender_name || user.fullName
+      };
+      setMessages(prev => {
+        // Remove optimistic message if it's still present
+        const filtered = prev.filter(m => m.id !== fakeMsg.id);
+        if (filtered.some(m => m.id === inserted.id)) return filtered;
+        return [...filtered, withAvatar];
+      });
+    }
   };
 
   const getHeatmapColor = (count: number, hasMySignal: boolean) => {
@@ -339,7 +448,7 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
     return `${baseColor} ${hasMySignal ? 'ring-2 ring-emerald-600 ring-inset' : ''}`;
   };
 
-  if (loading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin" /></div>;
+  if (spaceLoading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin" /></div>;
 
   return (
     <div className="min-h-screen bg-white pb-20">
@@ -425,6 +534,12 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
         {/* --- SIGNAL TAB (HEATMAP) --- */}
         {activeTab === 'signal' && (
           <div className="bg-white" ref={scrollRef}>
+            {signalsLoading && (
+              <div className="flex items-center justify-center gap-2 py-2 text-sm text-gray-500">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Loading calendar...
+              </div>
+            )}
             {/* Today Button */}
             <div className="flex justify-center py-2 border-b border-gray-100">
               <button
@@ -587,7 +702,12 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
         {activeTab === 'chat' && (
           <div className="flex flex-col h-[calc(100vh-220px)] bg-gray-50">
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              {messages.length === 0 ? (
+              {messagesLoading ? (
+                <div className="text-center text-gray-400 mt-10 flex items-center justify-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Loading messages...
+                </div>
+              ) : messages.length === 0 ? (
                 <div className="text-center text-gray-400 mt-10">No messages yet. Say hi!</div>
               ) : (
                 messages.map((msg: any) => {

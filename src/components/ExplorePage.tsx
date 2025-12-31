@@ -18,16 +18,33 @@ export function ExplorePage({ onNavigate, user }: ExplorePageProps) {
   const [loading, setLoading] = useState(true);
   const [joinedSpaceIds, setJoinedSpaceIds] = useState<Set<string>>(new Set());
   const [joiningSpaceId, setJoiningSpaceId] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  const mapSpaceRow = (item: any): Space => ({
+    id: item.id,
+    name: item.name,
+    description: item.description || '',
+    location: item.location || 'Unknown',
+    category: item.category || 'Uncategorized',
+    members: item.members_count || 0,
+    rating: item.rating || 0,
+    creator: item.creator_id,
+    isPrivate: item.is_private,
+    color: item.color || 'from-gray-400 to-gray-600'
+  });
 
   useEffect(() => {
+    let isMounted = true;
+
     async function fetchSpaces() {
       try {
-        // Get current user ID
+        // Get current user ID once
         const { data: { user: authUser } } = await supabase.auth.getUser();
         if (!authUser) {
           setLoading(false);
           return;
         }
+        if (isMounted) setCurrentUserId(authUser.id);
 
         // Run queries in parallel for better performance
         const [spacesResult, membersResult] = await Promise.all([
@@ -56,38 +73,86 @@ export function ExplorePage({ onNavigate, user }: ExplorePageProps) {
             if (member.space_id) joinedIds.add(member.space_id);
           });
         }
-        setJoinedSpaceIds(joinedIds);
+        if (isMounted) setJoinedSpaceIds(joinedIds);
 
         // Process spaces data
         if (spacesResult.data) {
-          const mappedSpaces: Space[] = spacesResult.data.map(item => ({
-            id: item.id,
-            name: item.name,
-            description: item.description || '',
-            location: item.location || 'Unknown',
-            category: item.category || 'Uncategorized',
-            members: item.members_count || 0,
-            rating: item.rating || 0,
-            creator: item.creator_id,
-            isPrivate: item.is_private,
-            color: item.color || 'from-gray-400 to-gray-600'
-          }));
-          setSpaces(mappedSpaces);
+          const mappedSpaces: Space[] = spacesResult.data.map(mapSpaceRow);
+          if (isMounted) setSpaces(mappedSpaces);
         }
       } catch (err) {
         console.error('Unexpected error:', err);
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     }
 
     fetchSpaces();
+    return () => {
+      isMounted = false;
+    };
   }, []);
+
+  // Realtime updates for spaces list (new/updated/deleted)
+  useEffect(() => {
+    const channel = supabase.channel('explore-spaces')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'spaces' },
+        (payload) => {
+          setSpaces(prev => {
+            if (payload.eventType === 'INSERT') {
+              return [...prev, mapSpaceRow(payload.new)];
+            }
+            if (payload.eventType === 'UPDATE') {
+              return prev.map(space => space.id === payload.new.id ? mapSpaceRow(payload.new) : space);
+            }
+            if (payload.eventType === 'DELETE') {
+              return prev.filter(space => space.id !== payload.old.id);
+            }
+            return prev;
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // Realtime updates for current user's memberships
+  useEffect(() => {
+    if (!currentUserId) return;
+
+    const channel = supabase.channel(`explore-members-${currentUserId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'space_members', filter: `user_id=eq.${currentUserId}` },
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            setJoinedSpaceIds(prev => new Set(prev).add(payload.new.space_id));
+          }
+          if (payload.eventType === 'DELETE') {
+            setJoinedSpaceIds(prev => {
+              const next = new Set(prev);
+              next.delete(payload.old.space_id);
+              return next;
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentUserId]);
 
   const handleJoinSpace = async (spaceId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     
-    if (!user) {
+    if (!user || !currentUserId) {
       alert('Please log in to join a space');
       return;
     }
@@ -95,13 +160,6 @@ export function ExplorePage({ onNavigate, user }: ExplorePageProps) {
     setJoiningSpaceId(spaceId);
     
     try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) {
-        alert('Please log in to join a space');
-        setJoiningSpaceId(null);
-        return;
-      }
-
       const isJoined = joinedSpaceIds.has(spaceId);
 
       if (isJoined) {
@@ -110,20 +168,9 @@ export function ExplorePage({ onNavigate, user }: ExplorePageProps) {
           .from('space_members')
           .delete()
           .eq('space_id', spaceId)
-          .eq('user_id', authUser.id);
+          .eq('user_id', currentUserId);
 
         if (deleteError) throw deleteError;
-
-        // Update members_count
-        const space = spaces.find(s => s.id === spaceId);
-        if (space) {
-          const { error: updateError } = await supabase
-            .from('spaces')
-            .update({ members_count: Math.max(0, (space.members || 0) - 1) })
-            .eq('id', spaceId);
-
-          if (updateError) console.error('Error updating members count:', updateError);
-        }
 
         // Update local state
         setJoinedSpaceIds(prev => {
@@ -141,22 +188,11 @@ export function ExplorePage({ onNavigate, user }: ExplorePageProps) {
           .from('space_members')
           .insert({
             space_id: spaceId,
-            user_id: authUser.id,
+            user_id: currentUserId,
             role: 'member'
           });
 
         if (insertError) throw insertError;
-
-        // Update members_count
-        const space = spaces.find(s => s.id === spaceId);
-        if (space) {
-          const { error: updateError } = await supabase
-            .from('spaces')
-            .update({ members_count: (space.members || 0) + 1 })
-            .eq('id', spaceId);
-
-          if (updateError) console.error('Error updating members count:', updateError);
-        }
 
         // Update local state
         setJoinedSpaceIds(prev => new Set(prev).add(spaceId));

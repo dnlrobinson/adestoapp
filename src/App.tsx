@@ -14,6 +14,7 @@ import { EditProfilePage } from './components/EditProfilePage';
 export type Page = 'welcome' | 'onboarding' | 'explore' | 'space-detail' | 'create-space' | 'profile' | 'admin' | 'edit-profile';
 
 export interface User {
+  id?: string;
   fullName: string;
   location: string;
   bio: string;
@@ -66,6 +67,7 @@ export default function App() {
             }
 
             setUser({
+              id: authUser.id,
               fullName: profile?.full_name || authUser.user_metadata.full_name || authUser.email?.split('@')[0] || 'User',
               location: profile?.location || '',
               bio: profile?.bio || '',
@@ -81,6 +83,7 @@ export default function App() {
             console.error('Error processing profile:', profileErr);
             // Still set user with basic info even if profile fetch fails
             setUser({
+              id: authUser.id,
               fullName: authUser.user_metadata.full_name || authUser.email?.split('@')[0] || 'User',
               location: '',
               bio: '',
@@ -115,6 +118,7 @@ export default function App() {
           }
 
           setUser({
+            id: session.user.id,
             fullName: profile?.full_name || session.user.user_metadata.full_name || session.user.email?.split('@')[0] || 'User',
             location: profile?.location || '',
             bio: profile?.bio || '',
@@ -130,6 +134,7 @@ export default function App() {
           console.error('Error in auth state change:', error);
           // Still set user with basic info
           setUser({
+            id: session.user.id,
             fullName: session.user.user_metadata.full_name || session.user.email?.split('@')[0] || 'User',
             location: '',
             bio: '',
@@ -173,6 +178,7 @@ export default function App() {
         .single();
 
       setUser({
+        id: authUser.id,
         fullName: profile?.full_name || authUser.user_metadata.full_name || authUser.email?.split('@')[0] || 'User',
         location: profile?.location || '',
         bio: profile?.bio || '',
