@@ -1,7 +1,8 @@
-import { MapPin, Edit, Mail, Calendar, Users } from 'lucide-react';
+import { MapPin, Edit, Mail, Calendar, Users, Loader2 } from 'lucide-react';
 import { Page, User } from '../App';
 import { BottomNav } from './BottomNav';
-import React,{ useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
 
 interface ProfilePageProps {
   onNavigate: (page: Page, spaceId?: string) => void;
@@ -9,40 +10,98 @@ interface ProfilePageProps {
   onSignOut?: () => void;
 }
 
-const MOCK_USER_SPACES = [
-  {
-    id: '1',
-    name: 'Shared Laundry Room',
-    location: 'Building A Basement',
-    members: 12,
-    color: 'from-blue-400 to-blue-600',
-    role: 'Creator'
-  },
-  {
-    id: '3',
-    name: 'Gym & Fitness',
-    location: 'Building B Floor 1',
-    members: 45,
-    color: 'from-orange-400 to-red-500',
-    role: 'Member'
-  },
-  {
-    id: '2',
-    name: 'Rooftop Garden',
-    location: 'Building A Rooftop',
-    members: 24,
-    color: 'from-green-400 to-green-600',
-    role: 'Member'
-  }
-];
+interface UserSpace {
+  id: string;
+  name: string;
+  location: string;
+  members: number;
+  color: string;
+  role: 'Creator' | 'Member';
+}
 
 export function ProfilePage({ onNavigate, user, onSignOut }: ProfilePageProps) {
+  const [userSpaces, setUserSpaces] = useState<UserSpace[]>([]);
+  const [loading, setLoading] = useState(true);
+
   const displayUser = user || {
     fullName: 'Alex Johnson',
     location: 'Building A, Floor 3',
     bio: 'Community enthusiast and coordinator. Love organizing shared spaces and bringing neighbors together. Always happy to help!',
     email: 'alex.johnson@example.com'
   };
+
+  useEffect(() => {
+    async function fetchUserSpaces() {
+      try {
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        if (!authUser) {
+          setLoading(false);
+          return;
+        }
+
+        // Fetch spaces where user is a member
+        const { data: membersData, error: membersError } = await supabase
+          .from('space_members')
+          .select('space_id, role')
+          .eq('user_id', authUser.id);
+
+        if (membersError) {
+          console.error('Error fetching user spaces:', membersError);
+          setLoading(false);
+          return;
+        }
+
+        if (!membersData || membersData.length === 0) {
+          setUserSpaces([]);
+          setLoading(false);
+          return;
+        }
+
+        // Fetch full space details
+        const spaceIds = membersData.map(m => m.space_id).filter(Boolean);
+        const { data: spacesData, error: spacesError } = await supabase
+          .from('spaces')
+          .select('*')
+          .in('id', spaceIds);
+
+        if (spacesError) {
+          console.error('Error fetching spaces:', spacesError);
+          setLoading(false);
+          return;
+        }
+
+        // Map spaces with role information
+        const mappedSpaces: UserSpace[] = (spacesData || []).map(space => {
+          const member = membersData.find(m => m.space_id === space.id);
+          const isCreator = space.creator_id === authUser.id;
+          
+          return {
+            id: space.id,
+            name: space.name,
+            location: space.location || 'Unknown',
+            members: space.members_count || 0,
+            color: space.color || 'from-gray-400 to-gray-600',
+            role: isCreator ? 'Creator' : 'Member'
+          };
+        });
+
+        // Sort: creators first, then by name
+        mappedSpaces.sort((a, b) => {
+          if (a.role === 'Creator' && b.role !== 'Creator') return -1;
+          if (a.role !== 'Creator' && b.role === 'Creator') return 1;
+          return a.name.localeCompare(b.name);
+        });
+
+        setUserSpaces(mappedSpaces);
+      } catch (err) {
+        console.error('Unexpected error:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchUserSpaces();
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
@@ -70,7 +129,7 @@ export function ProfilePage({ onNavigate, user, onSignOut }: ProfilePageProps) {
                 <div className="flex flex-wrap gap-2">
                   <div className="flex items-center gap-1 px-3 py-1 bg-blue-50 text-blue-700 rounded-lg text-sm">
                     <Users className="w-4 h-4" />
-                    <span>{MOCK_USER_SPACES.length} Spaces</span>
+                    <span>{userSpaces.length} Spaces</span>
                   </div>
                   <div className="flex items-center gap-1 px-3 py-1 bg-purple-50 text-purple-700 rounded-lg text-sm">
                     <Calendar className="w-4 h-4" />
@@ -110,39 +169,57 @@ export function ProfilePage({ onNavigate, user, onSignOut }: ProfilePageProps) {
             </button>
           </div>
 
-          <div className="space-y-3">
-            {MOCK_USER_SPACES.map(space => (
-              <div
-                key={space.id}
-                onClick={() => onNavigate('space-detail', space.id)}
-                className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-all cursor-pointer"
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+            </div>
+          ) : userSpaces.length === 0 ? (
+            <div className="text-center py-12 bg-white rounded-2xl border border-gray-100">
+              <Users className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+              <h3 className="text-lg font-medium text-gray-900 mb-1">No spaces yet</h3>
+              <p className="text-gray-500 text-sm mb-4">Join spaces from the explore page to see them here</p>
+              <button
+                onClick={() => onNavigate('explore')}
+                className="px-4 py-2 bg-black text-white rounded-xl hover:bg-gray-800 transition-colors text-sm"
               >
-                <div className="flex items-center gap-4 p-4">
-                  <div className={`w-16 h-16 bg-gradient-to-br ${space.color} rounded-xl flex-shrink-0`} />
-                  <div className="flex-1 min-w-0 overflow-hidden">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h3 className="text-lg text-gray-900 truncate flex-shrink">{space.name}</h3>
-                      {space.role === 'Creator' && (
-                        <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-lg text-xs whitespace-nowrap flex-shrink-0">
-                          Creator
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-3 text-sm text-gray-500">
-                      <div className="flex items-center gap-1 min-w-0">
-                        <MapPin className="w-4 h-4 flex-shrink-0" />
-                        <span className="truncate">{space.location}</span>
+                Explore Spaces
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {userSpaces.map(space => (
+                <div
+                  key={space.id}
+                  onClick={() => onNavigate('space-detail', space.id)}
+                  className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-all cursor-pointer"
+                >
+                  <div className="flex items-center gap-4 p-4">
+                    <div className={`w-16 h-16 bg-gradient-to-br ${space.color} rounded-xl flex-shrink-0`} />
+                    <div className="flex-1 min-w-0 overflow-hidden">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className="text-lg text-gray-900 truncate flex-shrink">{space.name}</h3>
+                        {space.role === 'Creator' && (
+                          <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-lg text-xs whitespace-nowrap flex-shrink-0">
+                            Creator
+                          </span>
+                        )}
                       </div>
-                      <div className="flex items-center gap-1 whitespace-nowrap flex-shrink-0">
-                        <Users className="w-4 h-4" />
-                        <span>{space.members}</span>
+                      <div className="flex items-center gap-3 text-sm text-gray-500">
+                        <div className="flex items-center gap-1 min-w-0">
+                          <MapPin className="w-4 h-4 flex-shrink-0" />
+                          <span className="truncate">{space.location}</span>
+                        </div>
+                        <div className="flex items-center gap-1 whitespace-nowrap flex-shrink-0">
+                          <Users className="w-4 h-4" />
+                          <span>{space.members}</span>
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">

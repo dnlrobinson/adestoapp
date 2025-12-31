@@ -16,21 +16,46 @@ export function ExplorePage({ onNavigate, user }: ExplorePageProps) {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [spaces, setSpaces] = useState<Space[]>([]);
   const [loading, setLoading] = useState(true);
+  const [joinedSpaceIds, setJoinedSpaceIds] = useState<Set<string>>(new Set());
+  const [joiningSpaceId, setJoiningSpaceId] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchSpaces() {
       try {
-        const { data, error } = await supabase
-          .from('spaces')
-          .select('*');
-
-        if (error) {
-          console.error('Error fetching spaces:', error);
+        // Get current user ID
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        if (!authUser) {
+          setLoading(false);
           return;
         }
 
-        if (data) {
-          const mappedSpaces: Space[] = data.map(item => ({
+        // Fetch all spaces
+        const { data: spacesData, error: spacesError } = await supabase
+          .from('spaces')
+          .select('*');
+
+        if (spacesError) {
+          console.error('Error fetching spaces:', spacesError);
+          setLoading(false);
+          return;
+        }
+
+        // Fetch user's joined spaces
+        const { data: membersData } = await supabase
+          .from('space_members')
+          .select('space_id')
+          .eq('user_id', authUser.id);
+
+        const joinedIds = new Set<string>();
+        if (membersData) {
+          membersData.forEach(member => {
+            if (member.space_id) joinedIds.add(member.space_id);
+          });
+        }
+        setJoinedSpaceIds(joinedIds);
+
+        if (spacesData) {
+          const mappedSpaces: Space[] = spacesData.map(item => ({
             id: item.id,
             name: item.name,
             description: item.description || '',
@@ -38,7 +63,7 @@ export function ExplorePage({ onNavigate, user }: ExplorePageProps) {
             category: item.category || 'Uncategorized',
             members: item.members_count || 0,
             rating: item.rating || 0,
-            creator: item.creator_id, // This is just an ID for now, normally we'd join with profiles
+            creator: item.creator_id,
             isPrivate: item.is_private,
             color: item.color || 'from-gray-400 to-gray-600'
           }));
@@ -53,6 +78,94 @@ export function ExplorePage({ onNavigate, user }: ExplorePageProps) {
 
     fetchSpaces();
   }, []);
+
+  const handleJoinSpace = async (spaceId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    
+    if (!user) {
+      alert('Please log in to join a space');
+      return;
+    }
+
+    setJoiningSpaceId(spaceId);
+    
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) {
+        alert('Please log in to join a space');
+        setJoiningSpaceId(null);
+        return;
+      }
+
+      const isJoined = joinedSpaceIds.has(spaceId);
+
+      if (isJoined) {
+        // Leave the space
+        const { error: deleteError } = await supabase
+          .from('space_members')
+          .delete()
+          .eq('space_id', spaceId)
+          .eq('user_id', authUser.id);
+
+        if (deleteError) throw deleteError;
+
+        // Update members_count
+        const space = spaces.find(s => s.id === spaceId);
+        if (space) {
+          const { error: updateError } = await supabase
+            .from('spaces')
+            .update({ members_count: Math.max(0, (space.members || 0) - 1) })
+            .eq('id', spaceId);
+
+          if (updateError) console.error('Error updating members count:', updateError);
+        }
+
+        // Update local state
+        setJoinedSpaceIds(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(spaceId);
+          return newSet;
+        });
+
+        setSpaces(prev => prev.map(s => 
+          s.id === spaceId ? { ...s, members: Math.max(0, (s.members || 0) - 1) } : s
+        ));
+      } else {
+        // Join the space
+        const { error: insertError } = await supabase
+          .from('space_members')
+          .insert({
+            space_id: spaceId,
+            user_id: authUser.id,
+            role: 'member'
+          });
+
+        if (insertError) throw insertError;
+
+        // Update members_count
+        const space = spaces.find(s => s.id === spaceId);
+        if (space) {
+          const { error: updateError } = await supabase
+            .from('spaces')
+            .update({ members_count: (space.members || 0) + 1 })
+            .eq('id', spaceId);
+
+          if (updateError) console.error('Error updating members count:', updateError);
+        }
+
+        // Update local state
+        setJoinedSpaceIds(prev => new Set(prev).add(spaceId));
+        setSpaces(prev => prev.map(s => 
+          s.id === spaceId ? { ...s, members: (s.members || 0) + 1 } : s
+        ));
+      }
+    } catch (error: any) {
+      console.error('Error joining/leaving space:', error);
+      alert('Error: ' + (error.message || 'Failed to join/leave space'));
+    } finally {
+      setJoiningSpaceId(null);
+    }
+  };
 
   const filteredSpaces = spaces.filter(space => {
     const matchesSearch = space.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -151,13 +264,21 @@ export function ExplorePage({ onNavigate, user }: ExplorePageProps) {
                   </div>
                   
                   <button 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      // Handle join action
-                    }}
-                    className="px-5 py-2 bg-black text-white rounded-lg hover:bg-gray-800 transition-colors whitespace-nowrap flex-shrink-0"
+                    onClick={(e) => handleJoinSpace(space.id, e)}
+                    disabled={joiningSpaceId === space.id}
+                    className={`px-5 py-2 rounded-lg transition-colors whitespace-nowrap flex-shrink-0 ${
+                      joinedSpaceIds.has(space.id)
+                        ? 'bg-green-600 text-white hover:bg-green-700'
+                        : 'bg-black text-white hover:bg-gray-800'
+                    } disabled:opacity-50 disabled:cursor-not-allowed`}
                   >
-                    Join
+                    {joiningSpaceId === space.id ? (
+                      <Loader2 className="w-4 h-4 animate-spin inline" />
+                    ) : joinedSpaceIds.has(space.id) ? (
+                      'Joined'
+                    ) : (
+                      'Join'
+                    )}
                   </button>
                 </div>
               </div>
