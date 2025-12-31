@@ -21,7 +21,7 @@ export function WelcomePage({ onSignUp }: WelcomePageProps) {
           </div>
           <h1 className="text-4xl mb-4 text-gray-900">Welcome to Adesto</h1>
           <p className="text-gray-600 text-lg leading-relaxed">
-            Connect with neighbors, signal intent, and coordinate shared spaces together
+            Presence made simple. Plan your time around your community and connect with the places you care about.
           </p>
         </div>
 
