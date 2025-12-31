@@ -4,6 +4,7 @@ import { Page, User } from '../App';
 import { BottomNav } from './BottomNav';
 import { supabase } from '../lib/supabase';
 import { useNavigate } from 'react-router-dom';
+import { Avatar } from './Avatar';
 
 interface SpaceDetailPageProps {
   spaceId: string;
@@ -181,14 +182,33 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
         setUserSignals(mySignals);
       }
 
-      // 3. Get Messages
+      // 3. Get Messages with user profiles
       const { data: msgs } = await supabase
         .from('messages')
-        .select('*')
+        .select('*, user_id')
         .eq('space_id', spaceId)
         .order('created_at', { ascending: true });
       
-      if (msgs) setMessages(msgs);
+      if (msgs) {
+        // Fetch profiles for all unique user IDs in messages
+        const userIds = [...new Set(msgs.map((m: any) => m.user_id).filter(Boolean))];
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, avatar_url, full_name')
+          .in('id', userIds);
+        
+        // Map profiles to messages
+        const messagesWithAvatars = msgs.map((msg: any) => {
+          const profile = profiles?.find((p: any) => p.id === msg.user_id);
+          return {
+            ...msg,
+            avatar_url: profile?.avatar_url || null,
+            sender_name: profile?.full_name || msg.sender_name || 'User'
+          };
+        });
+        
+        setMessages(messagesWithAvatars);
+      }
       
       setLoading(false);
     }
@@ -248,18 +268,30 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
     const msgContent = newMessage;
     setNewMessage(''); 
 
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (!authUser) return;
+
+    // Get current user's profile for avatar
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('avatar_url, full_name')
+      .eq('id', authUser.id)
+      .single();
+
     const fakeMsg = { 
       id: Date.now(), 
-      sender_name: user.fullName, 
+      sender_name: profile?.full_name || user.fullName, 
       content: msgContent, 
-      created_at: new Date().toISOString() 
+      created_at: new Date().toISOString(),
+      avatar_url: profile?.avatar_url || user.avatar || null,
+      user_id: authUser.id
     };
     setMessages(prev => [...prev, fakeMsg]);
 
     await supabase.from('messages').insert({
       space_id: spaceId,
-      user_id: (await supabase.auth.getUser()).data.user?.id,
-      sender_name: user.fullName,
+      user_id: authUser.id,
+      sender_name: profile?.full_name || user.fullName,
       content: msgContent
     });
   };
@@ -435,15 +467,23 @@ export function SpaceDetailPage({ spaceId, onNavigate, user }: SpaceDetailPagePr
                 messages.map((msg: any) => {
                   const isMe = msg.sender_name === user?.fullName;
                   return (
-                    <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                      <div className={`px-4 py-2 rounded-2xl max-w-[80%] shadow-sm ${
-                        isMe ? 'bg-black text-white rounded-br-none' : 'bg-white text-gray-800 rounded-bl-none border border-gray-100'
-                      }`}>
-                        <p className="text-sm">{msg.content}</p>
+                    <div key={msg.id} className={`flex gap-2 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
+                      <Avatar 
+                        src={msg.avatar_url} 
+                        name={msg.sender_name || 'User'}
+                        size="sm"
+                        className="flex-shrink-0"
+                      />
+                      <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} max-w-[75%]`}>
+                        <div className={`px-4 py-2 rounded-2xl shadow-sm ${
+                          isMe ? 'bg-black text-white rounded-br-none' : 'bg-white text-gray-800 rounded-bl-none border border-gray-100'
+                        }`}>
+                          <p className="text-sm">{msg.content}</p>
+                        </div>
+                        <span className="text-[10px] text-gray-400 mt-1 px-1">
+                          {isMe ? 'You' : msg.sender_name} • {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                        </span>
                       </div>
-                      <span className="text-[10px] text-gray-400 mt-1 px-1">
-                        {isMe ? 'You' : msg.sender_name} • {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                      </span>
                     </div>
                   );
                 })

@@ -39,34 +39,52 @@ export default function App() {
   const location = useLocation();
 
   useEffect(() => {
-    // Check active session on load
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
+    async function fetchUser() {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (authUser) {
+        // Fetch profile from profiles table
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', authUser.id)
+          .single();
+
         setUser({
-          fullName: user.user_metadata.full_name || 'User',
-          location: '', // Would normally come from profile table
-          bio: '',      // Would normally come from profile table
-          email: user.email,
-          avatar: user.user_metadata.avatar_url
+          fullName: profile?.full_name || authUser.user_metadata.full_name || authUser.email?.split('@')[0] || 'User',
+          location: profile?.location || '',
+          bio: profile?.bio || '',
+          email: authUser.email,
+          avatar: profile?.avatar_url || authUser.user_metadata.avatar_url
         });
+
         // If on root or welcome, go to explore
         if (location.pathname === '/' || location.pathname === '/welcome') {
           navigate('/explore');
         }
       }
       setLoading(false);
-    });
+    }
+
+    fetchUser();
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user) {
+        // Fetch profile from profiles table
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+
         setUser({
-          fullName: session.user.user_metadata.full_name || 'User',
-          location: '',
-          bio: '',
+          fullName: profile?.full_name || session.user.user_metadata.full_name || session.user.email?.split('@')[0] || 'User',
+          location: profile?.location || '',
+          bio: profile?.bio || '',
           email: session.user.email,
-          avatar: session.user.user_metadata.avatar_url
+          avatar: profile?.avatar_url || session.user.user_metadata.avatar_url
         });
+
         // Only redirect to explore if we're on welcome page
         if (location.pathname === '/' || location.pathname === '/welcome') {
           navigate('/explore');
