@@ -176,6 +176,8 @@ export default function App() {
         <Route path="/create" element={<CreateSpacePage onNavigate={handleNavigate} user={user} />} />
         <Route path="/profile" element={<ProfilePage onNavigate={handleNavigate} user={user} onSignOut={handleSignOut} />} />
         <Route path="/profile/edit" element={<EditProfilePage onNavigate={handleNavigate} user={user} onProfileUpdated={handleProfileUpdated} />} />
+        {/* Catch-all route - redirects to explore if authenticated, otherwise welcome */}
+        <Route path="*" element={<Navigate to={user ? "/explore" : "/"} replace />} />
       </Routes>
     </div>
   );
