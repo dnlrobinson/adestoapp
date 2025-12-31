@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { User } from '../App';
+import { User, Page } from '../App';
 import { ArrowLeft, Trash2, Shield, Users, Loader2 } from 'lucide-react';
 
 interface AdminToolsPageProps {
   spaceId: string;
-  onNavigate: (page: string, spaceId?: string) => void;
+  onNavigate: (page: Page, spaceId?: string) => void;
   user: User | null;
 }
 

@@ -3,6 +3,7 @@ import { Page, User } from '../App';
 import { BottomNav } from './BottomNav';
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { Avatar } from './Avatar';
 
 interface ProfilePageProps {
   onNavigate: (page: Page, spaceId?: string) => void;
@@ -22,13 +23,40 @@ interface UserSpace {
 export function ProfilePage({ onNavigate, user, onSignOut }: ProfilePageProps) {
   const [userSpaces, setUserSpaces] = useState<UserSpace[]>([]);
   const [loading, setLoading] = useState(true);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileData, setProfileData] = useState<any>(null);
 
-  const displayUser = user || {
-    fullName: 'Alex Johnson',
-    location: 'Building A, Floor 3',
-    bio: 'Community enthusiast and coordinator. Love organizing shared spaces and bringing neighbors together. Always happy to help!',
-    email: 'alex.johnson@example.com'
-  };
+  useEffect(() => {
+    async function fetchProfile() {
+      try {
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        if (!authUser) {
+          setProfileLoading(false);
+          return;
+        }
+
+        const { data: profileData, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', authUser.id)
+          .single();
+
+        if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+          console.error('Error fetching profile:', error);
+        }
+
+        if (profileData) {
+          setProfileData(profileData);
+        }
+      } catch (err) {
+        console.error('Error:', err);
+      } finally {
+        setProfileLoading(false);
+      }
+    }
+
+    fetchProfile();
+  }, [user]);
 
   useEffect(() => {
     async function fetchUserSpaces() {
@@ -103,6 +131,23 @@ export function ProfilePage({ onNavigate, user, onSignOut }: ProfilePageProps) {
     fetchUserSpaces();
   }, []);
 
+  const displayUser = profileData ? {
+    fullName: profileData.full_name || user?.fullName || 'User',
+    location: profileData.location || '',
+    bio: profileData.bio || '',
+    email: user?.email,
+    avatar: profileData.avatar_url || user?.avatar || ''
+  } : (user || {
+    fullName: 'User',
+    location: '',
+    bio: '',
+    email: ''
+  });
+
+  const joinedDate = profileData?.created_at 
+    ? new Date(profileData.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+    : new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
       <div className="bg-gradient-to-br from-blue-500 to-purple-600 h-32"></div>
@@ -110,51 +155,66 @@ export function ProfilePage({ onNavigate, user, onSignOut }: ProfilePageProps) {
       <div className="max-w-2xl mx-auto px-4">
         <div className="relative -mt-16 mb-6">
           <div className="bg-white rounded-3xl shadow-lg border border-gray-100 p-6">
-            <div className="flex items-start gap-4 mb-6">
-              <div className="w-24 h-24 bg-gradient-to-br from-blue-400 to-purple-500 rounded-2xl flex items-center justify-center text-white text-3xl flex-shrink-0 shadow-lg">
-                {displayUser.fullName.split(' ').map(n => n[0]).join('')}
+            {profileLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-start justify-between mb-2">
-                  <h1 className="text-2xl text-gray-900 truncate">{displayUser.fullName}</h1>
-                  <button className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors">
-                    <Edit className="w-4 h-4" />
-                    <span className="text-sm">Edit</span>
-                  </button>
-                </div>
-                <div className="flex items-center gap-2 text-gray-600 mb-3">
-                  <MapPin className="w-4 h-4 flex-shrink-0" />
-                  <span className="text-sm">{displayUser.location}</span>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <div className="flex items-center gap-1 px-3 py-1 bg-blue-50 text-blue-700 rounded-lg text-sm">
-                    <Users className="w-4 h-4" />
-                    <span>{userSpaces.length} Spaces</span>
+            ) : (
+              <>
+                <div className="flex items-start gap-4 mb-6">
+                  <Avatar 
+                    src={displayUser.avatar} 
+                    name={displayUser.fullName}
+                    size="xl"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between mb-2">
+                      <h1 className="text-2xl text-gray-900 truncate">{displayUser.fullName}</h1>
+                      <button 
+                        onClick={() => onNavigate('edit-profile')}
+                        className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors"
+                      >
+                        <Edit className="w-4 h-4" />
+                        <span className="text-sm">Edit</span>
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2 text-gray-600 mb-3">
+                      <MapPin className="w-4 h-4 flex-shrink-0" />
+                      <span className="text-sm">{displayUser.location || 'No location set'}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <div className="flex items-center gap-1 px-3 py-1 bg-blue-50 text-blue-700 rounded-lg text-sm">
+                        <Users className="w-4 h-4" />
+                        <span>{userSpaces.length} Spaces</span>
+                      </div>
+                      <div className="flex items-center gap-1 px-3 py-1 bg-purple-50 text-purple-700 rounded-lg text-sm">
+                        <Calendar className="w-4 h-4" />
+                        <span>Joined {joinedDate}</span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1 px-3 py-1 bg-purple-50 text-purple-700 rounded-lg text-sm">
-                    <Calendar className="w-4 h-4" />
-                    <span>Joined Nov 2024</span>
-                  </div>
                 </div>
-              </div>
-            </div>
 
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-sm text-gray-500 mb-2">About</h3>
-                <p className="text-gray-700 leading-relaxed">{displayUser.bio}</p>
-              </div>
-
-              {displayUser.email && (
-                <div>
-                  <h3 className="text-sm text-gray-500 mb-2">Contact</h3>
-                  <div className="flex items-center gap-2 text-gray-700">
-                    <Mail className="w-4 h-4" />
-                    <span className="text-sm">{displayUser.email}</span>
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-sm text-gray-500 mb-2">About</h3>
+                    <p className="text-gray-700 leading-relaxed">
+                      {displayUser.bio || 'No bio yet. Click Edit to add one!'}
+                    </p>
                   </div>
+
+                  {displayUser.email && (
+                    <div>
+                      <h3 className="text-sm text-gray-500 mb-2">Contact</h3>
+                      <div className="flex items-center gap-2 text-gray-700">
+                        <Mail className="w-4 h-4" />
+                        <span className="text-sm">{displayUser.email}</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              </>
+            )}
           </div>
         </div>
 
