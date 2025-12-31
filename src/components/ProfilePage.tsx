@@ -1,4 +1,4 @@
-import { MapPin, Edit, Mail, Calendar, Users, Loader2, Save, X } from 'lucide-react';
+import { MapPin, Edit, Mail, Calendar, Users, Loader2 } from 'lucide-react';
 import { Page, User } from '../App';
 import { BottomNav } from './BottomNav';
 import React, { useState, useEffect } from 'react';
@@ -24,14 +24,6 @@ export function ProfilePage({ onNavigate, user, onSignOut }: ProfilePageProps) {
   const [userSpaces, setUserSpaces] = useState<UserSpace[]>([]);
   const [loading, setLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(true);
-  const [isEditing, setIsEditing] = useState(false);
-  const [profile, setProfile] = useState({
-    fullName: '',
-    bio: '',
-    location: '',
-    avatar: ''
-  });
-  const [saving, setSaving] = useState(false);
   const [profileData, setProfileData] = useState<any>(null);
 
   useEffect(() => {
@@ -55,20 +47,6 @@ export function ProfilePage({ onNavigate, user, onSignOut }: ProfilePageProps) {
 
         if (profileData) {
           setProfileData(profileData);
-          setProfile({
-            fullName: profileData.full_name || user?.fullName || '',
-            bio: profileData.bio || '',
-            location: profileData.location || '',
-            avatar: profileData.avatar_url || user?.avatar || ''
-          });
-        } else if (user) {
-          // Fallback to user data if no profile exists
-          setProfile({
-            fullName: user.fullName,
-            bio: user.bio,
-            location: user.location,
-            avatar: user.avatar || ''
-          });
         }
       } catch (err) {
         console.error('Error:', err);
@@ -153,75 +131,12 @@ export function ProfilePage({ onNavigate, user, onSignOut }: ProfilePageProps) {
     fetchUserSpaces();
   }, []);
 
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) {
-        alert('You must be logged in to update your profile');
-        setSaving(false);
-        return;
-      }
-
-      const { error } = await supabase
-        .from('profiles')
-        .upsert({
-          id: authUser.id,
-          full_name: profile.fullName,
-          bio: profile.bio,
-          location: profile.location,
-          avatar_url: profile.avatar
-        }, {
-          onConflict: 'id'
-        });
-
-      if (error) throw error;
-
-      setIsEditing(false);
-      // Refresh profile data
-      const { data: updatedProfile } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', authUser.id)
-        .single();
-      
-      if (updatedProfile) {
-        setProfileData(updatedProfile);
-      }
-    } catch (error: any) {
-      console.error('Error saving profile:', error);
-      alert('Error saving profile: ' + error.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleCancel = () => {
-    // Reset to original values
-    if (profileData) {
-      setProfile({
-        fullName: profileData.full_name || user?.fullName || '',
-        bio: profileData.bio || '',
-        location: profileData.location || '',
-        avatar: profileData.avatar_url || user?.avatar || ''
-      });
-    } else if (user) {
-      setProfile({
-        fullName: user.fullName,
-        bio: user.bio,
-        location: user.location,
-        avatar: user.avatar || ''
-      });
-    }
-    setIsEditing(false);
-  };
-
-  const displayUser = profile.fullName ? {
-    fullName: profile.fullName,
-    location: profile.location,
-    bio: profile.bio,
+  const displayUser = profileData ? {
+    fullName: profileData.full_name || user?.fullName || 'User',
+    location: profileData.location || '',
+    bio: profileData.bio || '',
     email: user?.email,
-    avatar: profile.avatar
+    avatar: profileData.avatar_url || user?.avatar || ''
   } : (user || {
     fullName: 'User',
     location: '',
@@ -254,57 +169,18 @@ export function ProfilePage({ onNavigate, user, onSignOut }: ProfilePageProps) {
                   />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between mb-2">
-                      {isEditing ? (
-                        <input
-                          type="text"
-                          value={profile.fullName}
-                          onChange={(e) => setProfile({ ...profile, fullName: e.target.value })}
-                          className="text-2xl font-bold text-gray-900 border-2 border-blue-500 rounded-lg px-2 py-1 focus:outline-none w-full"
-                          placeholder="Full Name"
-                        />
-                      ) : (
-                        <h1 className="text-2xl text-gray-900 truncate">{displayUser.fullName}</h1>
-                      )}
-                      {!isEditing ? (
-                        <button 
-                          onClick={() => setIsEditing(true)}
-                          className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors"
-                        >
-                          <Edit className="w-4 h-4" />
-                          <span className="text-sm">Edit</span>
-                        </button>
-                      ) : (
-                        <div className="flex gap-2">
-                          <button
-                            onClick={handleSave}
-                            disabled={saving}
-                            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-50"
-                          >
-                            <Save className="w-4 h-4" />
-                            <span className="text-sm">{saving ? 'Saving...' : 'Save'}</span>
-                          </button>
-                          <button
-                            onClick={handleCancel}
-                            className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      )}
+                      <h1 className="text-2xl text-gray-900 truncate">{displayUser.fullName}</h1>
+                      <button 
+                        onClick={() => onNavigate('edit-profile')}
+                        className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors"
+                      >
+                        <Edit className="w-4 h-4" />
+                        <span className="text-sm">Edit</span>
+                      </button>
                     </div>
                     <div className="flex items-center gap-2 text-gray-600 mb-3">
                       <MapPin className="w-4 h-4 flex-shrink-0" />
-                      {isEditing ? (
-                        <input
-                          type="text"
-                          value={profile.location}
-                          onChange={(e) => setProfile({ ...profile, location: e.target.value })}
-                          className="flex-1 text-sm border-2 border-blue-500 rounded-lg px-2 py-1 focus:outline-none"
-                          placeholder="Location"
-                        />
-                      ) : (
-                        <span className="text-sm">{displayUser.location || 'No location set'}</span>
-                      )}
+                      <span className="text-sm">{displayUser.location || 'No location set'}</span>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <div className="flex items-center gap-1 px-3 py-1 bg-blue-50 text-blue-700 rounded-lg text-sm">
@@ -322,19 +198,9 @@ export function ProfilePage({ onNavigate, user, onSignOut }: ProfilePageProps) {
                 <div className="space-y-4">
                   <div>
                     <h3 className="text-sm text-gray-500 mb-2">About</h3>
-                    {isEditing ? (
-                      <textarea
-                        value={profile.bio}
-                        onChange={(e) => setProfile({ ...profile, bio: e.target.value })}
-                        className="w-full text-gray-700 leading-relaxed border-2 border-blue-500 rounded-lg px-3 py-2 focus:outline-none resize-none"
-                        rows={4}
-                        placeholder="Tell us about yourself..."
-                      />
-                    ) : (
-                      <p className="text-gray-700 leading-relaxed">
-                        {displayUser.bio || 'No bio yet. Click Edit to add one!'}
-                      </p>
-                    )}
+                    <p className="text-gray-700 leading-relaxed">
+                      {displayUser.bio || 'No bio yet. Click Edit to add one!'}
+                    </p>
                   </div>
 
                   {displayUser.email && (

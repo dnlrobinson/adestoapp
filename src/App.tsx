@@ -8,8 +8,9 @@ import { SpaceDetailPage } from './components/SpaceDetailPage';
 import { CreateSpacePage } from './components/CreateSpacePage';
 import { ProfilePage } from './components/ProfilePage';
 import { AdminToolsPage } from './components/AdminToolsPage';
+import { EditProfilePage } from './components/EditProfilePage';
 
-export type Page = 'welcome' | 'onboarding' | 'explore' | 'space-detail' | 'create-space' | 'profile' | 'admin';
+export type Page = 'welcome' | 'onboarding' | 'explore' | 'space-detail' | 'create-space' | 'profile' | 'admin' | 'edit-profile';
 
 export interface User {
   fullName: string;
@@ -105,10 +106,32 @@ export default function App() {
       navigate(`/space/${spaceId}/admin`);
     } else if (page === 'create-space') {
       navigate('/create');
+    } else if (page === 'edit-profile') {
+      navigate('/profile/edit');
     } else if (page === 'welcome') {
       navigate('/');
     } else {
       navigate(`/${page}`);
+    }
+  };
+
+  const handleProfileUpdated = async () => {
+    // Refresh user data after profile update
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (authUser) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', authUser.id)
+        .single();
+
+      setUser({
+        fullName: profile?.full_name || authUser.user_metadata.full_name || authUser.email?.split('@')[0] || 'User',
+        location: profile?.location || '',
+        bio: profile?.bio || '',
+        email: authUser.email,
+        avatar: profile?.avatar_url || authUser.user_metadata.avatar_url
+      });
     }
   };
 
@@ -152,6 +175,7 @@ export default function App() {
         <Route path="/space/:spaceId/admin" element={<AdminToolsPageWrapper onNavigate={handleNavigate} user={user} />} />
         <Route path="/create" element={<CreateSpacePage onNavigate={handleNavigate} user={user} />} />
         <Route path="/profile" element={<ProfilePage onNavigate={handleNavigate} user={user} onSignOut={handleSignOut} />} />
+        <Route path="/profile/edit" element={<EditProfilePage onNavigate={handleNavigate} user={user} onProfileUpdated={handleProfileUpdated} />} />
       </Routes>
     </div>
   );
