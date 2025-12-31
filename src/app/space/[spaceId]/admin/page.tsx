@@ -1,91 +1,89 @@
-import React, { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
-import { User, Page } from '../App';
-import { ArrowLeft, Trash2, Shield, Users, Loader2 } from 'lucide-react';
+"use client"
 
-interface AdminToolsPageProps {
-  spaceId: string;
-  onNavigate: (page: Page, spaceId?: string) => void;
-  user: User | null;
-}
+import { useEffect, useState, useRef } from 'react'
+import { useParams, useRouter } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
+import { ArrowLeft, Trash2, Shield, Users, Loader2 } from 'lucide-react'
 
 interface Member {
-  id: string;
-  user_id: string;
-  role?: string | null;
-  email?: string | null;
+  id: string
+  user_id: string
+  role?: string | null
+  email?: string | null
 }
 
-export function AdminToolsPage({ spaceId, onNavigate, user }: AdminToolsPageProps) {
-  const [spaceName, setSpaceName] = useState('Loading...');
-  const [creatorId, setCreatorId] = useState<string | null>(null);
-  const [members, setMembers] = useState<Member[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [busyId, setBusyId] = useState<string | null>(null);
+export default function AdminToolsPage() {
+  const params = useParams()
+  const router = useRouter()
+  const spaceId = params.spaceId as string
 
-  const currentUserIdRef = React.useRef<string | null>(null);
+  const [spaceName, setSpaceName] = useState('Loading...')
+  const [creatorId, setCreatorId] = useState<string | null>(null)
+  const [members, setMembers] = useState<Member[]>([])
+  const [loading, setLoading] = useState(true)
+  const [busyId, setBusyId] = useState<string | null>(null)
+
+  const currentUserIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
-      currentUserIdRef.current = user?.id ?? null;
-    });
-  }, []);
+      currentUserIdRef.current = user?.id ?? null
+    })
+  }, [])
 
   useEffect(() => {
     async function load() {
-      setLoading(true);
-      // 1) Space info
+      setLoading(true)
       const { data: space } = await supabase
         .from('spaces')
         .select('name, creator_id')
         .eq('id', spaceId)
-        .single();
+        .single()
       if (space) {
-        setSpaceName(space.name);
-        setCreatorId(space.creator_id);
+        setSpaceName(space.name)
+        setCreatorId(space.creator_id)
       }
 
-      // 2) Members (requires space_members table)
       const { data: mems } = await supabase
         .from('space_members')
         .select('id, user_id, role, email')
-        .eq('space_id', spaceId);
+        .eq('space_id', spaceId)
 
       if (mems) {
-        setMembers(mems);
+        setMembers(mems)
       }
-      setLoading(false);
+      setLoading(false)
     }
-    load();
-  }, [spaceId]);
+    load()
+  }, [spaceId])
 
-  const isCreator = creatorId && currentUserIdRef.current === creatorId;
+  const isCreator = creatorId && currentUserIdRef.current === creatorId
 
   const handleRemove = async (memberId: string) => {
-    if (!isCreator) return alert('Only the creator can manage members.');
-    setBusyId(memberId);
-    await supabase.from('space_members').delete().eq('id', memberId);
-    setMembers(prev => prev.filter(m => m.id !== memberId));
-    setBusyId(null);
-  };
+    if (!isCreator) return alert('Only the creator can manage members.')
+    setBusyId(memberId)
+    await supabase.from('space_members').delete().eq('id', memberId)
+    setMembers(prev => prev.filter(m => m.id !== memberId))
+    setBusyId(null)
+  }
 
   const handleDeleteSpace = async () => {
-    if (!isCreator) return alert('Only the creator can delete this space.');
+    if (!isCreator) return alert('Only the creator can delete this space.')
     if (members.length > 1) {
-      return alert('Remove all other members first. You must be the last member to delete the space.');
+      return alert('Remove all other members first. You must be the last member to delete the space.')
     }
-    const confirmed = window.confirm(`Delete "${spaceName}" permanently? This cannot be undone.`);
-    if (!confirmed) return;
-    await supabase.from('spaces').delete().eq('id', spaceId);
-    onNavigate('explore');
-  };
+    const confirmed = window.confirm(`Delete "${spaceName}" permanently? This cannot be undone.`)
+    if (!confirmed) return
+    await supabase.from('spaces').delete().eq('id', spaceId)
+    router.push('/explore')
+  }
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <Loader2 className="animate-spin" />
       </div>
-    );
+    )
   }
 
   if (!isCreator) {
@@ -96,21 +94,21 @@ export function AdminToolsPage({ spaceId, onNavigate, user }: AdminToolsPageProp
           <h2 className="text-lg font-semibold text-gray-900">Admin Tools</h2>
           <p className="text-sm text-gray-600">Only the space creator can access admin tools.</p>
           <button
-            onClick={() => onNavigate('space-detail', spaceId)}
+            onClick={() => router.push(`/space/${spaceId}`)}
             className="px-4 py-2 bg-black text-white rounded-xl hover:bg-gray-800 transition-colors"
           >
             Back to space
           </button>
         </div>
       </div>
-    );
+    )
   }
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
       <div className="bg-white border-b border-gray-100 sticky top-0 z-20">
         <div className="max-w-2xl mx-auto px-4 pt-4 pb-2 flex items-center gap-3">
-          <button onClick={() => onNavigate('space-detail', spaceId)} className="text-gray-600 flex items-center gap-1">
+          <button onClick={() => router.push(`/space/${spaceId}`)} className="text-gray-600 flex items-center gap-1">
             <ArrowLeft className="w-5 h-5" /> Back
           </button>
           <h1 className="text-xl font-semibold text-gray-900">Admin Tools · {spaceName}</h1>
@@ -170,6 +168,6 @@ export function AdminToolsPage({ spaceId, onNavigate, user }: AdminToolsPageProp
         </div>
       </div>
     </div>
-  );
+  )
 }
 

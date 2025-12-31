@@ -1,24 +1,53 @@
-import React,{ useState } from 'react';
-import { MapPin, User as UserIcon, FileText, ArrowRight } from 'lucide-react';
-import { User } from '../App';
+"use client"
 
-interface OnboardingPageProps {
-  onComplete: (user: User) => void;
-}
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { MapPin, User as UserIcon, FileText, ArrowRight } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
 
-export function OnboardingPage({ onComplete }: OnboardingPageProps) {
-  const [fullName, setFullName] = useState('');
-  const [location, setLocation] = useState('');
-  const [bio, setBio] = useState('');
+export default function OnboardingPage() {
+  const router = useRouter()
+  const [fullName, setFullName] = useState('')
+  const [location, setLocation] = useState('')
+  const [bio, setBio] = useState('')
+  const [saving, setSaving] = useState(false)
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (fullName && location && bio) {
-      onComplete({ fullName, location, bio });
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!fullName || !location || !bio) return
+
+    setSaving(true)
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser()
+      if (!authUser) {
+        alert('You must be logged in to complete onboarding')
+        setSaving(false)
+        return
+      }
+
+      const { error } = await supabase
+        .from('profiles')
+        .upsert({
+          id: authUser.id,
+          full_name: fullName.trim(),
+          location: location.trim(),
+          bio: bio.trim()
+        }, {
+          onConflict: 'id'
+        })
+
+      if (error) throw error
+
+      router.push('/explore')
+    } catch (error: any) {
+      console.error('Error saving profile:', error)
+      alert('Error saving profile: ' + error.message)
+    } finally {
+      setSaving(false)
     }
-  };
+  }
 
-  const isValid = fullName.trim() && location.trim() && bio.trim();
+  const isValid = fullName.trim() && location.trim() && bio.trim()
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex flex-col items-center justify-center p-6">
@@ -87,10 +116,10 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
 
           <button
             type="submit"
-            disabled={!isValid}
+            disabled={!isValid || saving}
             className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl hover:shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none"
           >
-            <span>Continue</span>
+            <span>{saving ? 'Saving...' : 'Continue'}</span>
             <ArrowRight className="w-5 h-5" />
           </button>
         </form>
@@ -102,5 +131,6 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
         </div>
       </div>
     </div>
-  );
+  )
 }
+
